@@ -92,9 +92,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/recommendations', async (req, res) => {
+app.get('/api/news', async (req, res) => {
   const startTime = Date.now();
-  console.log(`[${new Date().toISOString()}] Starting /api/recommendations processing pipeline...`);
+  console.log(`[${new Date().toISOString()}] GET /api/news: Starting news retrieval...`);
 
   try {
     const finnhubToken = process.env.FINNHUB_API_KEY || 'd99jf91r01qssj13hm60d99jf91r01qssj13hm6g';
@@ -112,18 +112,10 @@ app.get('/api/recommendations', async (req, res) => {
 
     // Extract first 20 articles directly as-is
     const rawArticles = newsResponse.data.slice(0, 20);
-    console.log(`[${new Date().toISOString()}] Successfully parsed news. Mapped ${rawArticles.length} articles from Finnhub feed.`);
-
-    if (rawArticles.length === 0) {
-      console.warn(`[${new Date().toISOString()}] No articles returned from Finnhub feed.`);
-      return res.status(404).json({
-        error: 'No news articles found in the live feed from Finnhub.'
-      });
-    }
+    console.log(`[${new Date().toISOString()}] Mapped ${rawArticles.length} articles from Finnhub feed.`);
 
     // Map to clean format containing title, description, and original URL
     const cleanArticles = rawArticles.map((item, index) => {
-      console.log(`  [Article #${index + 1}] Title: "${item.headline || 'No Headline'}"`);
       return {
         title: item.headline || 'No Headline',
         description: item.summary || 'No Summary Available',
@@ -131,9 +123,41 @@ app.get('/api/recommendations', async (req, res) => {
       };
     });
 
-    // We do NOT pass the URL to Gemini to keep input clean and prevent confusion
-    const promptArticles = cleanArticles.map(a => ({ title: a.title, description: a.description }));
+    console.log(`[${new Date().toISOString()}] Successfully completed news retrieval in ${Date.now() - startTime}ms.`);
+    return res.json({ items: cleanArticles });
 
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Fatal Error fetching news:`, error);
+    return res.status(500).json({
+      error: 'An internal server error occurred while retrieving news.',
+      message: error.message
+    });
+  }
+});
+
+app.post('/api/recommendations', async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] POST /api/recommendations: Starting processing pipeline...`);
+
+  try {
+    const { articles } = req.body;
+    if (!Array.isArray(articles) || articles.length === 0) {
+      console.warn(`[${new Date().toISOString()}] Request validation failed: articles array is missing or empty.`);
+      return res.status(400).json({
+        error: 'Invalid request body. An array of "articles" is required.'
+      });
+    }
+
+    // Map to clean format for prompt inputs
+    const cleanArticles = articles.slice(0, 20).map((item, index) => {
+      console.log(`  [Payload Article #${index + 1}] Title: "${item.title || 'No Headline'}"`);
+      return {
+        title: item.title || 'No Headline',
+        description: item.description || 'No Summary Available'
+      };
+    });
+
+    const promptArticles = cleanArticles.map(a => ({ title: a.title, description: a.description }));
     const userPrompt = `Here are the latest 20 live news headlines. Evaluate and categorize them based on the system instructions. Focus strictly on NSE/BSE stock recommendations. Current date: ${new Date().toISOString()}.\n\nArticles:\n${JSON.stringify(promptArticles, null, 2)}`;
 
     let geminiResponseText = null;
@@ -203,16 +227,8 @@ app.get('/api/recommendations', async (req, res) => {
       });
     }
 
-    // Merge the source URLs from cleanArticles back into the Gemini recommendations matching by index
+    // Log metrics on classifications
     if (recommendationData && Array.isArray(recommendationData.items)) {
-      recommendationData.items = recommendationData.items.map((item, index) => {
-        const original = cleanArticles[index] || cleanArticles.find(a => a.title === item.headline) || {};
-        return {
-          ...item,
-          url: original.url || ''
-        };
-      });
-
       const good = recommendationData.items.filter(item => item.classification === 'Good news').length;
       const bad = recommendationData.items.filter(item => item.classification === 'Bad news').length;
       const neutral = recommendationData.items.filter(item => item.classification === 'No change').length;
@@ -239,3 +255,5 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Active environment port configuration: ${process.env.PORT || 'Default 3000'}`);
 });
+
+export default app;

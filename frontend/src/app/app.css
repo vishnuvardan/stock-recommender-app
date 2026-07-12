@@ -718,3 +718,36 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Micro Spinner for Card Loading Footer */
+.micro-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: #0f172a;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+.analysis-loading {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.analysis-idle {
+  background-color: #f8fafc;
+  border-color: #e2e8f0;
+  border-style: dashed;
+}
+
+.tag-pending {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+}
+
+.dark-spinner {
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: #0f172a;
+}
