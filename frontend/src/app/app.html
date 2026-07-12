@@ -1,0 +1,193 @@
+<div class="dashboard-wrapper">
+
+  <header class="app-header">
+    <div class="header-main">
+      <div class="brand-group">
+        <img src="logo.png" alt="Logo" class="logo-img" />
+        <div>
+          <h1>AI-Driven Fundamental News Stocks Analyser</h1>
+          <p class="subtitle">Real-time Fundamental News Sentiment & NSE/BSE Swing Recommender</p>
+        </div>
+      </div>
+
+      <div class="action-group">
+        @if (data()) {
+        <div class="model-badge" title="Active AI model used for analysis">
+          <span class="pulse-dot"></span>
+          Model: <span class="model-name">{{ data()?.processedByModel || 'Gemini Fallback' }}</span>
+        </div>
+        }
+        <button class="btn btn-primary" (click)="fetchFeed()" [disabled]="isLoading()">
+          @if (isLoading()) {
+          <span class="btn-spinner"></span>
+          Syncing Pipeline...
+          } @else {
+          <span class="btn-icon">⚡</span>
+          Fetch Latest Market Feed
+          }
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-container">
+    <!-- Error Alert -->
+    @if (errorMessage()) {
+    <div class="error-panel">
+      <div class="error-icon">⚠️</div>
+      <div class="error-details">
+        <h3>Data Pipeline Error</h3>
+        <p>{{ errorMessage() }}</p>
+      </div>
+      <button class="btn btn-secondary" (click)="fetchFeed()">Retry Connection</button>
+    </div>
+    }
+
+    <!-- Empty State -->
+    @if (!data() && !isLoading() && !errorMessage()) {
+    <div class="empty-state">
+      <div class="empty-art">
+        <div class="chart-bar bar-1"></div>
+        <div class="chart-bar bar-2"></div>
+        <div class="chart-bar bar-3"></div>
+        <div class="chart-circle"></div>
+      </div>
+      <h2>Direct Live Analytical Pipeline Inactive</h2>
+      <p>Trigger a real-time crawl of Finnhub macro news. The Analyser will instantly filter, classify, and
+        generate actionable NSE/BSE swing opportunities using Google Gemini.</p>
+      <button class="btn btn-primary btn-large" (click)="fetchFeed()">
+        <span class="btn-icon">⚡</span> Initialize Analysis
+      </button>
+    </div>
+    }
+
+    <!-- Loading Spinner -->
+    @if (isLoading()) {
+    <div class="loading-state">
+      <div class="spinner-container">
+        <div class="spinner-outer"></div>
+        <div class="spinner-inner"></div>
+        <div class="spinner-logo">AI</div>
+      </div>
+      <h2>Analyzing Market Sentiment</h2>
+      <p>Crawling live news feed, extracting core headlines, and passing payload through Gemini AI matrix...
+      </p>
+    </div>
+    }
+
+    <!-- Dashboard Content (Loaded State) -->
+    @if (data() && !isLoading()) {
+    <!-- Filtering & Analytics Panel -->
+    <section class="control-panel">
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Search stocks, headlines or keywords..." [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)" />
+      </div>
+
+      <div class="filters">
+        <button class="filter-btn" [class.active]="activeFilter() === 'ALL'" (click)="setFilter('ALL')">
+          All News <span class="count">{{ data()?.items?.length || 0 }}</span>
+        </button>
+        <button class="filter-btn filter-good" [class.active]="activeFilter() === 'GOOD'" (click)="setFilter('GOOD')">
+          Bullish <span class="count">{{ goodCount() }}</span>
+        </button>
+        <button class="filter-btn filter-bad" [class.active]="activeFilter() === 'BAD'" (click)="setFilter('BAD')">
+          Bearish <span class="count">{{ badCount() }}</span>
+        </button>
+        <button class="filter-btn filter-neutral" [class.active]="activeFilter() === 'NEUTRAL'"
+          (click)="setFilter('NEUTRAL')">
+          Neutral <span class="count">{{ neutralCount() }}</span>
+        </button>
+      </div>
+
+      @if (data()?.lastUpdated) {
+      <div class="timestamp-badge">
+        Last Updated: <strong>{{ data()?.lastUpdated | date:'mediumTime' }}</strong>
+      </div>
+      }
+    </section>
+
+    <!-- Grid Cards -->
+    <section class="recommendations-grid">
+      @for (item of filteredItems(); track $index) {
+      <div class="card clickable-card" [ngClass]="{
+            'card-good': item.classification === 'Good news',
+            'card-bad': item.classification === 'Bad news',
+            'card-neutral': item.classification === 'No change'
+          }" (click)="openArticle(item.url)" [attr.title]="item.url ? 'Click to read original news article' : null">
+        <div class="card-header">
+          <span class="classification-tag" [ngClass]="{
+                'tag-good': item.classification === 'Good news',
+                'tag-bad': item.classification === 'Bad news',
+                'tag-neutral': item.classification === 'No change'
+              }">
+            {{ item.classification }}
+          </span>
+          @if (item.url) {
+          <span class="source-indicator">Read Source ↗</span>
+          }
+        </div>
+
+        <div class="card-body">
+          <h2 class="headline-text">{{ item.headline }}</h2>
+          <p class="summary-text">{{ item.summary }}</p>
+        </div>
+
+        <div class="card-footer">
+          @if (item.classification === 'Good news') {
+          <div class="analysis-box analysis-good">
+            <div class="recommendation-header">
+              <span class="action-label">BULLISH RECOMMENDATION</span>
+              <strong class="stock-ticker green-glow">{{ item.relatedStock }}</strong>
+            </div>
+            <p class="recommendation-reason">{{ item.recommendationReason }}</p>
+          </div>
+          } @else if (item.classification === 'Bad news') {
+          <div class="analysis-box analysis-bad">
+            <div class="recommendation-header">
+              <span class="action-label">BEARISH RECOMMENDATION</span>
+              <strong class="stock-ticker red-glow">{{ item.relatedStock }}</strong>
+            </div>
+            <p class="recommendation-reason">{{ item.recommendationReason }}</p>
+          </div>
+          } @else {
+          <div class="analysis-box analysis-neutral">
+            <div class="recommendation-header">
+              <span class="action-label">HOLD / MONITOR</span>
+              <strong class="stock-ticker gray-glow">{{ item.relatedStock }}</strong>
+            </div>
+            <p class="recommendation-reason info-reason">
+              {{ item.recommendationReason || 'Headline represents macro/sector noise. Action is HOLD/MONITOR with no
+              directional target.' }}
+            </p>
+          </div>
+          }
+        </div>
+      </div>
+      } @empty {
+      <div class="no-results">
+        <div class="no-results-icon">📂</div>
+        <h3>No Recommendations Found</h3>
+        <p>No headlines match your search query or selected category filter.</p>
+      </div>
+      }
+    </section>
+    }
+  </main>
+
+  <!-- Bottom Disclaimer Banner (SEBI/AI Warning) -->
+  <footer class="app-footer">
+    <div class="disclaimer-banner" role="alert">
+      <div class="disclaimer-content">
+        <span class="disclaimer-badge">LEGAL DISCLAIMER</span>
+        <p class="disclaimer-text">
+          {{ data()?.disclaimer || defaultDisclaimer }}
+        </p>
+      </div>
+    </div>
+    <div class="footer-bottom-text">
+      <p>&copy; 2026 AI-Driven Fundamental News Stocks Analyser. Powered by Gemini AI.</p>
+    </div>
+  </footer>
+</div>
