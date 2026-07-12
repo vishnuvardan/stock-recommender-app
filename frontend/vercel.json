@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "outputDirectory": "dist/stock-recommender-frontend/browser",
   "rewrites": [
     {
       "source": "/api/:path*",
