@@ -738,9 +738,11 @@ Follow the system instructions exactly and provide objective, analytical, concis
   }
 });
 
+// Load instruments into cache on module initialization
+loadInstruments();
+
 // Start the server
 app.listen(PORT, () => {
-  loadInstruments();
   console.log(`Server is running on port ${PORT}`);
   console.log(`Active environment port configuration: ${process.env.PORT || 'Default 3000'}`);
 });
