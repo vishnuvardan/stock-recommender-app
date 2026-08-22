@@ -9,223 +9,594 @@
         </div>
       </div>
 
-      <div class="action-group">
-        @if (data()) {
-          <div class="model-badge" title="Active AI model used for analysis">
-            <span class="pulse-dot"></span>
-            Model: <span class="model-name">{{ data()?.processedByModel || 'Gemini' }}</span>
-          </div>
-        }
-        
-        <button class="btn btn-secondary" (click)="fetchNews()" [disabled]="isNewsLoading() || isAnalyzing()">
-          @if (isNewsLoading()) {
-            <span class="btn-spinner dark-spinner"></span>
-            Loading Feed...
-          } @else {
-            🔄 Refresh News
+      @if (activeTab() === 'news') {
+        <div class="action-group">
+          @if (data()) {
+            <div class="model-badge" title="Active AI model used for analysis">
+              <span class="pulse-dot"></span>
+              Model: <span class="model-name">{{ data()?.processedByModel || 'Gemini' }}</span>
+            </div>
           }
-        </button>
+          
+          <button class="btn btn-secondary" (click)="fetchNews()" [disabled]="isNewsLoading() || isAnalyzing()">
+            @if (isNewsLoading()) {
+              <span class="btn-spinner dark-spinner"></span>
+              Loading Feed...
+            } @else {
+              🔄 Refresh News
+            }
+          </button>
 
-        <button class="btn btn-primary" (click)="runAnalysis()" [disabled]="isNewsLoading() || isAnalyzing() || articles().length === 0">
-          @if (isAnalyzing()) {
-            <span class="btn-spinner"></span>
-            Analyzing...
-          } @else if (isAnalyzed()) {
-            ⚡ Re-run AI Analysis
-          } @else {
-            ⚡ Run AI Analysis
+          <button class="btn btn-primary" (click)="runAnalysis()" [disabled]="isNewsLoading() || isAnalyzing() || articles().length === 0">
+            @if (isAnalyzing()) {
+              <span class="btn-spinner"></span>
+              Analyzing...
+            } @else if (isAnalyzed()) {
+              ⚡ Re-run AI Analysis
+            } @else {
+              ⚡ Run AI Analysis
+            }
+          </button>
+        </div>
+      }
+      @if (activeTab() === 'research' && researchData()) {
+        <div class="action-group">
+          @if (researchData()?.processedByModel) {
+            <div class="model-badge" title="Active AI model used for analysis">
+              <span class="pulse-dot"></span>
+              Model: <span class="model-name">{{ researchData()?.processedByModel }}</span>
+            </div>
           }
-        </button>
-      </div>
+          <button class="btn btn-primary" (click)="copyMarkdownAnalysis()">
+            📋 Copy Markdown
+          </button>
+        </div>
+      }
     </div>
+
+    <nav class="app-nav">
+      <button 
+        class="nav-tab" 
+        [class.active]="activeTab() === 'news'"
+        (click)="switchTab('news')"
+      >
+        📰 News Recommendations
+      </button>
+      <button 
+        class="nav-tab" 
+        [class.active]="activeTab() === 'research'"
+        (click)="switchTab('research')"
+      >
+        📊 Stock Analyzer
+      </button>
+    </nav>
   </header>
 
   <main class="dashboard-container">
-    <!-- Error Alert -->
-    @if (errorMessage()) {
-      <div class="error-panel">
-        <div class="error-icon">⚠️</div>
-        <div class="error-details">
-          <h3>System Error</h3>
-          <p>{{ errorMessage() }}</p>
+    @if (activeTab() === 'news') {
+      <!-- Error Alert -->
+      @if (errorMessage()) {
+        <div class="error-panel">
+          <div class="error-icon">⚠️</div>
+          <div class="error-details">
+            <h3>System Error</h3>
+            <p>{{ errorMessage() }}</p>
+          </div>
+          <button class="btn btn-secondary" (click)="fetchNews()">Retry</button>
         </div>
-        <button class="btn btn-secondary" (click)="fetchNews()">Retry</button>
-      </div>
+      }
+
+      <!-- Initial News Feed Loading Spinner -->
+      @if (isNewsLoading()) {
+        <div class="loading-state">
+          <div class="spinner-container">
+            <div class="spinner-outer"></div>
+            <div class="spinner-inner"></div>
+            <div class="spinner-logo">AI</div>
+          </div>
+          <h2>Syncing Live News Feed</h2>
+          <p>Connecting to Finnhub market terminal and retrieving the latest news articles...</p>
+        </div>
+      }
+
+      <!-- Empty State -->
+      @if (articles().length === 0 && !isNewsLoading() && !errorMessage()) {
+        <div class="empty-state">
+          <div class="empty-art">
+            <div class="chart-bar bar-1"></div>
+            <div class="chart-bar bar-2"></div>
+            <div class="chart-bar bar-3"></div>
+            <div class="chart-circle"></div>
+          </div>
+          <h2>Direct Live Analytical Pipeline Inactive</h2>
+          <p>The news feed is currently empty. Click "Refresh News" to retrieve the latest feed.</p>
+          <button class="btn btn-primary btn-large" (click)="fetchNews()">
+            🔄 Refresh News Feed
+          </button>
+        </div>
+      }
+
+      <!-- Dashboard Content (Loaded State) -->
+      @if (articles().length > 0 && !isNewsLoading()) {
+        <!-- Filtering & Analytics Panel -->
+        <section class="control-panel">
+          <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Search stocks, headlines or keywords..." 
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
+            />
+          </div>
+
+          <div class="filters">
+            <button 
+              class="filter-btn" 
+              [class.active]="activeFilter() === 'ALL'"
+              (click)="setFilter('ALL')"
+            >
+              All News <span class="count">{{ articles().length }}</span>
+            </button>
+            <button 
+              class="filter-btn filter-good" 
+              [class.active]="activeFilter() === 'GOOD'"
+              (click)="setFilter('GOOD')"
+            >
+              Bullish <span class="count">{{ goodCount() }}</span>
+            </button>
+            <button 
+              class="filter-btn filter-bad" 
+              [class.active]="activeFilter() === 'BAD'"
+              (click)="setFilter('BAD')"
+            >
+              Bearish <span class="count">{{ badCount() }}</span>
+            </button>
+            <button 
+              class="filter-btn filter-neutral" 
+              [class.active]="activeFilter() === 'NEUTRAL'"
+              (click)="setFilter('NEUTRAL')"
+            >
+              Neutral <span class="count">{{ neutralCount() }}</span>
+            </button>
+          </div>
+
+          @if (data()?.lastUpdated) {
+            <div class="timestamp-badge">
+              Analyzed at: <strong>{{ data()?.lastUpdated | date:'mediumTime' }}</strong>
+            </div>
+          }
+        </section>
+
+        <!-- Grid Cards -->
+        <section class="recommendations-grid">
+          @for (item of filteredItems(); track $index) {
+            <div class="card clickable-card" [ngClass]="{
+              'card-good': item.classification === 'Good news',
+              'card-bad': item.classification === 'Bad news',
+              'card-neutral': item.classification === 'No change'
+            }" (click)="openArticle(item.url)" [attr.title]="item.url ? 'Click to read original news article' : null">
+              
+              <div class="card-header">
+                @if (item.classification) {
+                  <span class="classification-tag" [ngClass]="{
+                    'tag-good': item.classification === 'Good news',
+                    'tag-bad': item.classification === 'Bad news',
+                    'tag-neutral': item.classification === 'No change'
+                  }">
+                    {{ item.classification }}
+                  </span>
+                } @else {
+                  <span class="classification-tag tag-pending">
+                    Analysis Pending
+                  </span>
+                }
+                @if (item.url) {
+                  <span class="source-indicator">Read Source ↗</span>
+                }
+              </div>
+
+              <div class="card-body">
+                <h2 class="headline-text">{{ item.title }}</h2>
+                <p class="summary-text">{{ item.description }}</p>
+              </div>
+
+              <div class="card-footer">
+                <!-- AI Is Analyzing State -->
+                @if (isAnalyzing() && !item.classification) {
+                  <div class="analysis-box analysis-loading">
+                    <div class="recommendation-header">
+                      <span class="action-label">AI PROCESSING...</span>
+                      <span class="micro-spinner"></span>
+                    </div>
+                    <p class="recommendation-reason info-reason">Evaluating headline sentiment and looking for Indian stock catalysts...</p>
+                  </div>
+                } 
+                <!-- Clean Analyzed Success States -->
+                @else if (item.classification === 'Good news') {
+                  <div class="analysis-box analysis-good">
+                    <div class="recommendation-header">
+                      <span class="action-label">BULLISH RECOMMENDATION</span>
+                      <strong class="stock-ticker green-glow">{{ item.relatedStock }}</strong>
+                    </div>
+                    <p class="recommendation-reason">{{ item.recommendationReason }}</p>
+                  </div>
+                } @else if (item.classification === 'Bad news') {
+                  <div class="analysis-box analysis-bad">
+                    <div class="recommendation-header">
+                      <span class="action-label">BEARISH RECOMMENDATION</span>
+                      <strong class="stock-ticker red-glow">{{ item.relatedStock }}</strong>
+                    </div>
+                    <p class="recommendation-reason">{{ item.recommendationReason }}</p>
+                  </div>
+                } @else if (item.classification === 'No change') {
+                  <div class="analysis-box analysis-neutral">
+                    <div class="recommendation-header">
+                      <span class="action-label">HOLD / MONITOR</span>
+                      <strong class="stock-ticker gray-glow">{{ item.relatedStock }}</strong>
+                    </div>
+                    <p class="recommendation-reason info-reason">
+                      {{ item.recommendationReason || 'Headline represents macro/sector noise. Action is HOLD/MONITOR with no directional target.' }}
+                    </p>
+                  </div>
+                } 
+                <!-- Idle / Pending Analysis State -->
+                @else {
+                  <div class="analysis-box analysis-idle">
+                    <div class="recommendation-header">
+                      <span class="action-label">SENTIMENT ANALYSIS</span>
+                    </div>
+                    <p class="recommendation-reason info-reason">Click "Run AI Analysis" in the top right to check sentiment and stock recommenders.</p>
+                  </div>
+                }
+              </div>
+            </div>
+          } @empty {
+            <div class="no-results">
+              <div class="no-results-icon">📂</div>
+              <h3>No News Found</h3>
+              <p>No headlines match your search query or selected category filter.</p>
+            </div>
+          }
+        </section>
+      }
     }
 
-    <!-- Initial News Feed Loading Spinner -->
-    @if (isNewsLoading()) {
-      <div class="loading-state">
-        <div class="spinner-container">
-          <div class="spinner-outer"></div>
-          <div class="spinner-inner"></div>
-          <div class="spinner-logo">AI</div>
-        </div>
-        <h2>Syncing Live News Feed</h2>
-        <p>Connecting to Finnhub market terminal and retrieving the latest news articles...</p>
-      </div>
-    }
-
-    <!-- Empty State -->
-    @if (articles().length === 0 && !isNewsLoading() && !errorMessage()) {
-      <div class="empty-state">
-        <div class="empty-art">
-          <div class="chart-bar bar-1"></div>
-          <div class="chart-bar bar-2"></div>
-          <div class="chart-bar bar-3"></div>
-          <div class="chart-circle"></div>
-        </div>
-        <h2>Direct Live Analytical Pipeline Inactive</h2>
-        <p>The news feed is currently empty. Click "Refresh News" to retrieve the latest feed.</p>
-        <button class="btn btn-primary btn-large" (click)="fetchNews()">
-          🔄 Refresh News Feed
-        </button>
-      </div>
-    }
-
-    <!-- Dashboard Content (Loaded State) -->
-    @if (articles().length > 0 && !isNewsLoading()) {
-      <!-- Filtering & Analytics Panel -->
-      <section class="control-panel">
-        <div class="search-bar">
-          <span class="search-icon">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Search stocks, headlines or keywords..." 
-            [ngModel]="searchQuery()"
-            (ngModelChange)="searchQuery.set($event)"
-          />
-        </div>
-
-        <div class="filters">
+    @if (activeTab() === 'research') {
+      <div class="research-page-container">
+        <!-- Stock Selection Panel -->
+        <section class="research-search-panel">
+          <div class="research-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Enter stock name or symbol (e.g. INFY, RELIANCE, ETERNAL)..." 
+              [ngModel]="researchQuerySymbol()"
+              (ngModelChange)="onSearchInput($event)"
+              (keydown.enter)="triggerResearch(researchQuerySymbol())"
+              autocomplete="off"
+            />
+            
+            <!-- Autocomplete suggestions dropdown -->
+            @if (suggestions().length > 0) {
+              <ul class="suggestions-dropdown">
+                @for (item of suggestions(); track item.symbol) {
+                  <li (click)="selectSuggestion(item)">
+                    <span class="suggestion-symbol">{{ item.symbol }}</span>
+                    <span class="suggestion-name">{{ item.name }}</span>
+                    <span class="suggestion-badge">{{ item.exchange }}</span>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+          
           <button 
-            class="filter-btn" 
-            [class.active]="activeFilter() === 'ALL'"
-            (click)="setFilter('ALL')"
+            class="btn btn-primary btn-large" 
+            (click)="triggerResearch(researchQuerySymbol())"
+            [disabled]="isResearchLoading() || !researchQuerySymbol().trim()"
           >
-            All News <span class="count">{{ articles().length }}</span>
+            @if (isResearchLoading()) {
+              <span class="btn-spinner"></span>
+              Researching...
+            } @else {
+              ⚡ Run Research
+            }
           </button>
-          <button 
-            class="filter-btn filter-good" 
-            [class.active]="activeFilter() === 'GOOD'"
-            (click)="setFilter('GOOD')"
-          >
-            Bullish <span class="count">{{ goodCount() }}</span>
-          </button>
-          <button 
-            class="filter-btn filter-bad" 
-            [class.active]="activeFilter() === 'BAD'"
-            (click)="setFilter('BAD')"
-          >
-            Bearish <span class="count">{{ badCount() }}</span>
-          </button>
-          <button 
-            class="filter-btn filter-neutral" 
-            [class.active]="activeFilter() === 'NEUTRAL'"
-            (click)="setFilter('NEUTRAL')"
-          >
-            Neutral <span class="count">{{ neutralCount() }}</span>
-          </button>
-        </div>
+        </section>
 
-        @if (data()?.lastUpdated) {
-          <div class="timestamp-badge">
-            Analyzed at: <strong>{{ data()?.lastUpdated | date:'mediumTime' }}</strong>
+        <!-- Error Panel -->
+        @if (researchError()) {
+          <div class="error-panel">
+            <div class="error-icon">⚠️</div>
+            <div class="error-details">
+              <h3>Research Error</h3>
+              <p>{{ researchError() }}</p>
+            </div>
+            <button class="btn btn-secondary" (click)="triggerResearch(researchQuerySymbol())">Retry</button>
           </div>
         }
-      </section>
 
-      <!-- Grid Cards -->
-      <section class="recommendations-grid">
-        @for (item of filteredItems(); track $index) {
-          <div class="card clickable-card" [ngClass]="{
-            'card-good': item.classification === 'Good news',
-            'card-bad': item.classification === 'Bad news',
-            'card-neutral': item.classification === 'No change'
-          }" (click)="openArticle(item.url)" [attr.title]="item.url ? 'Click to read original news article' : null">
-            
-            <div class="card-header">
-              @if (item.classification) {
-                <span class="classification-tag" [ngClass]="{
-                  'tag-good': item.classification === 'Good news',
-                  'tag-bad': item.classification === 'Bad news',
-                  'tag-neutral': item.classification === 'No change'
-                }">
-                  {{ item.classification }}
-                </span>
-              } @else {
-                <span class="classification-tag tag-pending">
-                  Analysis Pending
-                </span>
-              }
-              @if (item.url) {
-                <span class="source-indicator">Read Source ↗</span>
-              }
+        <!-- Loading State -->
+        @if (isResearchLoading()) {
+          <div class="loading-state">
+            <div class="spinner-container">
+              <div class="spinner-outer"></div>
+              <div class="spinner-inner"></div>
+              <div class="spinner-logo">AI</div>
             </div>
+            <h2>Running Gemini Stock Research</h2>
+            <p>Analyzing company fundamentals, market data, and compiling investment thesis for {{ researchQuerySymbol() }}...</p>
+          </div>
+        }
 
-            <div class="card-body">
-              <h2 class="headline-text">{{ item.title }}</h2>
-              <p class="summary-text">{{ item.description }}</p>
+        <!-- Empty State -->
+        @if (!researchData() && !isResearchLoading() && !researchError()) {
+          <div class="empty-state">
+            <div class="empty-art">
+              <div class="chart-bar bar-1"></div>
+              <div class="chart-bar bar-2"></div>
+              <div class="chart-bar bar-3"></div>
+              <div class="chart-circle"></div>
             </div>
+            <h2>Equity Fundamental Analysis Terminal</h2>
+            <p>Type a stock symbol above to run an AI-backed fundamental research, key metrics evaluation, and actionable swing guidelines.</p>
+          </div>
+        }
 
-            <div class="card-footer">
-              <!-- AI Is Analyzing State -->
-              @if (isAnalyzing() && !item.classification) {
-                <div class="analysis-box analysis-loading">
-                  <div class="recommendation-header">
-                    <span class="action-label">AI PROCESSING...</span>
-                    <span class="micro-spinner"></span>
-                  </div>
-                  <p class="recommendation-reason info-reason">Evaluating headline sentiment and looking for Indian stock catalysts...</p>
+        <!-- Analysis Results -->
+        @if (researchData() && !isResearchLoading()) {
+          <div class="research-results-wrapper">
+            <!-- Header Card with Signal -->
+            <header class="research-result-header card" [ngClass]="{
+              'card-good': researchData()?.signal === 'BUY',
+              'card-bad': researchData()?.signal === 'SELL',
+              'card-neutral': researchData()?.signal === 'HOLD'
+            }">
+              <div class="header-details">
+                <div class="company-meta">
+                  <h1>{{ researchData()?.companyName }}</h1>
+                  <span class="ticker-exchange-tag">{{ researchData()?.symbol }} &bull; {{ researchData()?.overview?.primaryExchange }}</span>
                 </div>
-              } 
-              <!-- Analyzed Success States -->
-              @else if (item.classification === 'Good news') {
-                <div class="analysis-box analysis-good">
-                  <div class="recommendation-header">
-                    <span class="action-label">BULLISH RECOMMENDATION</span>
-                    <strong class="stock-ticker green-glow">{{ item.relatedStock }}</strong>
-                  </div>
-                  <p class="recommendation-reason">{{ item.recommendationReason }}</p>
+                <div class="signal-badge-container">
+                  <span class="classification-tag" [ngClass]="{
+                    'tag-good': researchData()?.signal === 'BUY',
+                    'tag-bad': researchData()?.signal === 'SELL',
+                    'tag-neutral': researchData()?.signal === 'HOLD'
+                  }">
+                    {{ researchData()?.signal }}
+                  </span>
                 </div>
-              } @else if (item.classification === 'Bad news') {
-                <div class="analysis-box analysis-bad">
-                  <div class="recommendation-header">
-                    <span class="action-label">BEARISH RECOMMENDATION</span>
-                    <strong class="stock-ticker red-glow">{{ item.relatedStock }}</strong>
-                  </div>
-                  <p class="recommendation-reason">{{ item.recommendationReason }}</p>
+              </div>
+              <p class="signal-reason"><strong>Recommendation Thesis:</strong> {{ researchData()?.signalReason }}</p>
+            </header>
+
+            <!-- Beginner Insights Card (Trend and Buy Position) -->
+            @if (researchData()?.trendIndicator || researchData()?.buyingPosition) {
+              <div class="beginner-insights-panel card">
+                <h3>💡 Beginner-Friendly Insights</h3>
+                <div class="beginner-insights-grid">
+                  @if (researchData()?.trendIndicator) {
+                    <div class="insight-box trend-box">
+                      <div class="insight-label-group">
+                        <span class="insight-icon">🚦</span>
+                        <span class="label">Trend Helper</span>
+                      </div>
+                      <div class="trend-indicator-row">
+                        <span class="trend-light" [ngClass]="'light-' + researchData()?.trendIndicator?.signal"></span>
+                        <p class="value desc">{{ researchData()?.trendIndicator?.text }}</p>
+                      </div>
+                    </div>
+                  }
+                  @if (researchData()?.buyingPosition) {
+                    <div class="insight-box sale-box">
+                      <div class="insight-label-group">
+                        <span class="insight-icon">🏷️</span>
+                        <span class="label">Is it On Sale?</span>
+                      </div>
+                      <p class="value desc">{{ researchData()?.buyingPosition?.text }}</p>
+                    </div>
+                  }
                 </div>
-              } @else if (item.classification === 'No change') {
-                <div class="analysis-box analysis-neutral">
-                  <div class="recommendation-header">
-                    <span class="action-label">HOLD / MONITOR</span>
-                    <strong class="stock-ticker gray-glow">{{ item.relatedStock }}</strong>
+              </div>
+            }
+
+            <!-- 1. Stock Overview -->
+            <section class="research-section card">
+              <div class="section-title">
+                <h2>1. Stock Overview</h2>
+              </div>
+              <div class="overview-grid">
+                <div class="overview-item">
+                  <span class="label">Primary Exchange</span>
+                  <p class="value">{{ researchData()?.overview?.primaryExchange }}</p>
+                </div>
+                <div class="overview-item">
+                  <span class="label">Previous Names</span>
+                  <p class="value">{{ researchData()?.overview?.previousNames }}</p>
+                </div>
+                <div class="overview-item full-width">
+                  <span class="label">Core Business Segments</span>
+                  <div class="segments-tags">
+                    @for (segment of researchData()?.overview?.coreSegments; track $index) {
+                      <span class="segment-tag">{{ segment }}</span>
+                    }
                   </div>
-                  <p class="recommendation-reason info-reason">
-                    {{ item.recommendationReason || 'Headline represents macro/sector noise. Action is HOLD/MONITOR with no directional target.' }}
+                </div>
+                <div class="overview-item full-width">
+                  <span class="label">Revenue Drivers & Business Model</span>
+                  <p class="value desc">{{ researchData()?.overview?.revenueDrivers }}</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- 2. Key Financial & Market Data Table -->
+            <section class="research-section card">
+              <div class="section-title">
+                <h2>2. Key Financial & Market Data</h2>
+              </div>
+              <div class="table-responsive">
+                <table class="financial-table">
+                  <thead>
+                    <tr>
+                      <th>Financial Metric</th>
+                      <th>Value / Est.</th>
+                      <th>Analytical Insight</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of researchData()?.financials; track row.metric) {
+                      <tr>
+                        <td class="metric-name">{{ row.metric }}</td>
+                        <td class="metric-value">{{ row.value }}</td>
+                        <td class="metric-insight">{{ row.insight }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- 3. Fundamental Thesis: Pros vs. Cons -->
+            <section class="research-thesis-container">
+              <div class="thesis-card pros-card card">
+                <h3>🟢 Strengths & Growth Catalysts</h3>
+                <ul>
+                  @for (pro of researchData()?.thesis?.pros; track $index) {
+                    <li>
+                      <span class="icon">✓</span>
+                      <p>{{ pro }}</p>
+                    </li>
+                  }
+                </ul>
+              </div>
+
+              <div class="thesis-card cons-card card">
+                <h3>🔴 Key Risks & Headwinds</h3>
+                <ul>
+                  @for (con of researchData()?.thesis?.cons; track $index) {
+                    <li>
+                      <span class="icon">⚠️</span>
+                      <p>{{ con }}</p>
+                    </li>
+                  }
+                </ul>
+              </div>
+            </section>
+
+            <!-- 4. Actionable Signal Breakdown -->
+            <section class="research-section card">
+              <div class="section-title">
+                <h2>4. Actionable Signal Breakdown</h2>
+              </div>
+              <div class="guidance-grid">
+                <div class="guidance-card entry-strategy">
+                  <div class="card-icon">💼</div>
+                  <h4>New Investors</h4>
+                  <h5>Fresh Buy / Entry Strategy</h5>
+                  <p>{{ researchData()?.guidance?.newInvestors }}</p>
+                </div>
+
+                <div class="guidance-card hold-strategy">
+                  <div class="card-icon">📈</div>
+                  <h4>Existing Holders</h4>
+                  <h5>Hold / Profit Taking Logic</h5>
+                  <p>{{ researchData()?.guidance?.existingHolders }}</p>
+                </div>
+
+                <div class="guidance-card swing-strategy">
+                  <div class="card-icon">⚡</div>
+                  <h4>Swing & Short-Term Traders</h4>
+                  <h5>Key Levels & Stop Loss</h5>
+                  <p>{{ researchData()?.guidance?.swingTraders }}</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- 5. Price Target & Accumulation Spectrum -->
+            @if (researchData()?.priceTargetAnalysis) {
+              <section class="research-section card">
+                <div class="section-title">
+                  <h2>5. Price Target & Risk/Reward Roadmap</h2>
+                </div>
+                
+                <div class="roadmap-stats-grid">
+                  <div class="stat-card stat-downside">
+                    <span class="stat-label">Downside Risk Floor</span>
+                    <span class="stat-value">₹{{ researchData()?.priceTargetAnalysis?.stopLoss }}</span>
+                    <span class="stat-badge badge-red">
+                      -{{ getDownsidePercent(researchData()?.priceTargetAnalysis?.currentPrice, researchData()?.priceTargetAnalysis?.stopLoss) | number:'1.1-1' }}% Risk
+                    </span>
+                  </div>
+                  
+                  <div class="stat-card stat-cmp">
+                    <span class="stat-label">Current Market Price (CMP)</span>
+                    <span class="stat-value text-blue">₹{{ researchData()?.priceTargetAnalysis?.currentPrice }}</span>
+                    <span class="stat-desc font-medium">Yahoo Finance Live Quote</span>
+                  </div>
+
+                  <div class="stat-card stat-upside">
+                    <span class="stat-label">Upside Target Potential</span>
+                    <span class="stat-value text-green">₹{{ researchData()?.priceTargetAnalysis?.targetPrice }}</span>
+                    <span class="stat-badge badge-green">
+                      +{{ getUpsidePercent(researchData()?.priceTargetAnalysis?.currentPrice, researchData()?.priceTargetAnalysis?.targetPrice) | number:'1.1-1' }}% Upside
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Price Target Track Gauge -->
+                <div class="price-track-container">
+                  <div class="track-labels-top">
+                    <span class="price-label red-text">Stop Loss (Floor): <strong>₹{{ researchData()?.priceTargetAnalysis?.stopLoss }}</strong></span>
+                    <span class="price-label yellow-text">Accumulation Range (Buy Zone): <strong>₹{{ researchData()?.priceTargetAnalysis?.accumulationMin }} - ₹{{ researchData()?.priceTargetAnalysis?.accumulationMax }}</strong></span>
+                    <span class="price-label green-text">Price Target: <strong>₹{{ researchData()?.priceTargetAnalysis?.targetPrice }}</strong></span>
+                  </div>
+
+                  <div class="price-slider-track">
+                    <!-- Color Bars Background -->
+                    <div class="track-base"></div>
+                    
+                    <!-- Accumulation Zone Highlighted Block -->
+                    <div 
+                      class="track-accumulation-zone"
+                      [style.left.%]="getPricePercent(researchData()?.priceTargetAnalysis?.accumulationMin, researchData()?.priceTargetAnalysis?.stopLoss, researchData()?.priceTargetAnalysis?.targetPrice)"
+                      [style.width.%]="getPricePercent(researchData()?.priceTargetAnalysis?.accumulationMax, researchData()?.priceTargetAnalysis?.stopLoss, researchData()?.priceTargetAnalysis?.targetPrice) - getPricePercent(researchData()?.priceTargetAnalysis?.accumulationMin, researchData()?.priceTargetAnalysis?.stopLoss, researchData()?.priceTargetAnalysis?.targetPrice)"
+                    >
+                      <span class="zone-label">Buy Range</span>
+                    </div>
+
+                    <!-- Current Price Pin Indicator -->
+                    <div 
+                      class="track-cmp-pin"
+                      [style.left.%]="getPricePercent(researchData()?.priceTargetAnalysis?.currentPrice, researchData()?.priceTargetAnalysis?.stopLoss, researchData()?.priceTargetAnalysis?.targetPrice)"
+                    >
+                      <div class="pin-marker"></div>
+                      <div class="pin-label">CMP: ₹{{ researchData()?.priceTargetAnalysis?.currentPrice }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="roadmap-summary-notes">
+                  <p>
+                    <strong>Roadmap Insight:</strong> The stock's optimal buy zone is between 
+                    <strong>₹{{ researchData()?.priceTargetAnalysis?.accumulationMin }}</strong> and 
+                    <strong>₹{{ researchData()?.priceTargetAnalysis?.accumulationMax }}</strong>. 
+                    Buying inside this range protects your capital against a downside fall to <strong>₹{{ researchData()?.priceTargetAnalysis?.stopLoss }}</strong> (Stop Loss) while securing a potential target gains up to 
+                    <strong>₹{{ researchData()?.priceTargetAnalysis?.targetPrice }}</strong>.
                   </p>
                 </div>
-              } 
-              <!-- Idle / Pending Analysis State -->
-              @else {
-                <div class="analysis-box analysis-idle">
-                  <div class="recommendation-header">
-                    <span class="action-label">SENTIMENT ANALYSIS</span>
-                  </div>
-                  <p class="recommendation-reason info-reason">Click "Run AI Analysis" in the top right to check sentiment and stock recommenders.</p>
-                </div>
-              }
+              </section>
+            }
+
+            <!-- Copy Markdown Quick Action -->
+            <div class="quick-action-bar">
+              <button class="btn btn-primary btn-large" (click)="copyMarkdownAnalysis()">
+                📋 Copy Complete Markdown Analysis to Clipboard
+              </button>
             </div>
           </div>
-        } @empty {
-          <div class="no-results">
-            <div class="no-results-icon">📂</div>
-            <h3>No News Found</h3>
-            <p>No headlines match your search query or selected category filter.</p>
-          </div>
         }
-      </section>
+      </div>
     }
   </main>
 

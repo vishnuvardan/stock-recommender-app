@@ -28,6 +28,64 @@ export interface RecommendationsResponse {
   items: RecommendationItem[];
 }
 
+export interface StockSuggestion {
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
+export interface ResearchOverview {
+  primaryExchange: string;
+  previousNames: string;
+  coreSegments: string[];
+  revenueDrivers: string;
+}
+
+export interface ResearchFinancial {
+  metric: string;
+  value: string;
+  insight: string;
+}
+
+export interface ResearchThesis {
+  pros: string[];
+  cons: string[];
+}
+
+export interface ResearchGuidance {
+  newInvestors: string;
+  existingHolders: string;
+  swingTraders: string;
+}
+
+export interface ResearchPriceTarget {
+  accumulationMin: number;
+  accumulationMax: number;
+  targetPrice: number;
+  stopLoss: number;
+  currentPrice?: number;
+}
+
+export interface ResearchResponse {
+  symbol: string;
+  companyName: string;
+  signal: 'BUY' | 'HOLD' | 'SELL';
+  signalReason: string;
+  overview: ResearchOverview;
+  financials: ResearchFinancial[];
+  thesis: ResearchThesis;
+  guidance: ResearchGuidance;
+  processedByModel?: string;
+  trendIndicator?: {
+    signal: 'green' | 'yellow' | 'red';
+    text: string;
+  };
+  buyingPosition?: {
+    text: string;
+  };
+  priceTargetAnalysis: ResearchPriceTarget;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -40,5 +98,13 @@ export class RecommendationService {
 
   getRecommendations(articles: NewsItem[]): Observable<RecommendationsResponse> {
     return this.http.post<RecommendationsResponse>('/api/recommendations', { articles });
+  }
+
+  getSuggestions(query: string): Observable<StockSuggestion[]> {
+    return this.http.get<StockSuggestion[]>(`/api/suggestions?q=${encodeURIComponent(query)}`);
+  }
+
+  getResearch(symbol: string): Observable<ResearchResponse> {
+    return this.http.get<ResearchResponse>(`/api/research?symbol=${encodeURIComponent(symbol)}`);
   }
 }
