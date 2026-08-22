@@ -266,11 +266,21 @@ let cachedEquities = [];
 function loadInstruments() {
   console.time('Load Instruments');
   try {
-    const csvPath = path.join(__dirname, 'instruments.csv');
+    // 3-way path resolution for local development & Vercel serverless hosting
+    let csvPath = path.join(process.cwd(), 'instruments.csv');
     if (!fs.existsSync(csvPath)) {
-      console.error(`Instruments file not found at ${csvPath}`);
+      csvPath = path.join(__dirname, 'instruments.csv');
+    }
+    if (!fs.existsSync(csvPath)) {
+      csvPath = path.join(process.cwd(), 'backend', 'instruments.csv');
+    }
+
+    if (!fs.existsSync(csvPath)) {
+      console.error(`[Instruments] CSV file not found at any candidate paths.`);
       return;
     }
+
+    console.log(`[${new Date().toISOString()}] Loading instruments CSV from: ${csvPath}`);
     const content = fs.readFileSync(csvPath, 'utf-8');
     const lines = content.split('\n');
     const equitiesMap = new Map();
