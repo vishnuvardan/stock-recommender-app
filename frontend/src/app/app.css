@@ -407,8 +407,13 @@
 /* Recommendations Grid */
 .recommendations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1.5rem;
+}
+
+.recommendations-grid .card {
+  aspect-ratio: 1 / 1;
+  padding: 1.25rem;
 }
 
 /* Card Styling */
@@ -465,8 +470,36 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
   gap: 0.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-download-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.card-download-btn:hover {
+  background-color: rgba(148, 163, 184, 0.15);
+  transform: scale(1.1);
+}
+
+.card-download-btn:active {
+  transform: scale(0.95);
 }
 .classification-tag {
   font-size: 0.75rem;
@@ -507,19 +540,23 @@
   margin-bottom: 1.5rem;
 }
 .headline-text {
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
-  line-height: 1.4;
-  margin: 0 0 0.75rem 0;
+  line-height: 1.35;
+  margin: 0 0 0.5rem 0;
   color: #0f172a;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .summary-text {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #475569;
-  line-height: 1.5;
+  line-height: 1.45;
   margin: 0;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -576,10 +613,14 @@
 }
 
 .recommendation-reason {
-  font-size: 0.8rem;
-  line-height: 1.45;
+  font-size: 0.78rem;
+  line-height: 1.4;
   color: #334155;
   margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .info-reason {
   color: #64748b;
@@ -1498,4 +1539,723 @@
 .roadmap-summary-notes strong {
   color: var(--text-primary);
 }
+
+/* ==========================================
+   INSTAGRAM PORTRAIT CAROUSEL STYLES (4:5)
+   ========================================== */
+
+.carousel-control-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+  background: #ffffff;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+}
+
+.carousel-nav-buttons {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.carousel-dots {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dot-indicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dot-indicator:hover {
+  background-color: #94a3b8;
+  transform: scale(1.15);
+}
+
+.dot-indicator.active {
+  background-color: #0f172a;
+  transform: scale(1.35);
+}
+
+.carousel-export-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-action {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-action:hover:not(:disabled) {
+  background-color: #e2e8f0;
+}
+
+/* Viewport and Track Layout */
+.instagram-carousel-viewport {
+  width: 432px;
+  height: 540px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 5px 15px rgba(0, 0, 0, 0.1);
+  position: relative;
+  background-color: #090b11;
+}
+
+.instagram-carousel-track {
+  display: flex;
+  width: 500%;
+  height: 100%;
+  transition: transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Standard Slide Card (Enforcing Portrait Aspect Ratio) */
+.instagram-slide {
+  width: 20%;
+  height: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.slide-inner {
+  width: 100%;
+  height: 100%;
+  padding: 1.75rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #090a10 0%, #15112e 50%, #06060a 100%);
+  color: #f8fafc;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  position: relative;
+}
+
+.slide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.75rem;
+}
+
+.slide-branding {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #38bdf8;
+  text-transform: uppercase;
+}
+
+.slide-number {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+.slide-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.75rem 0;
+  overflow: hidden;
+}
+
+.slide-main-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.45rem;
+  font-weight: 800;
+  margin: 0 0 0.2rem 0;
+  color: #ffffff;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.slide-subtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin: 0 0 0.85rem 0;
+  line-height: 1.35;
+}
+
+.slide-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.75rem;
+}
+
+.disclaimer-mini {
+  font-size: 0.65rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.app-watermark {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.02em;
+}
+
+/* News Slide Styles */
+.news-list-container-ig {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.news-card-ig {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 0.85rem;
+  transition: border-color 0.2s ease;
+}
+
+.news-meta-ig {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.news-badge-ig {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+}
+
+.news-badge-ig.impact-bullish {
+  background-color: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.15);
+}
+
+.news-badge-ig.impact-bearish {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.15);
+}
+
+.news-badge-ig.impact-neutral {
+  background-color: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(203, 213, 225, 0.15);
+}
+
+.news-date-ig {
+  font-size: 0.65rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.news-headline-ig {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0 0 0.3rem 0;
+  line-height: 1.35;
+}
+
+.news-summary-ig {
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.empty-news-ig {
+  padding: 2rem;
+  text-align: center;
+}
+
+.no-news-message {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+/* Trading Signal Slide Styles */
+.signal-badge-ig {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem;
+  border-radius: 12px;
+  margin-bottom: 0.85rem;
+  text-align: center;
+}
+
+.signal-badge-ig .label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 0.2rem;
+}
+
+.signal-badge-ig .signal-value {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.signal-badge-ig.sig-buy {
+  background: linear-gradient(135deg, rgba(21, 128, 61, 0.15) 0%, rgba(34, 197, 94, 0.08) 100%);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
+}
+
+.signal-badge-ig.sig-sell {
+  background: linear-gradient(135deg, rgba(185, 28, 28, 0.15) 0%, rgba(239, 68, 68, 0.08) 100%);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  color: #f87171;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.08);
+}
+
+.signal-badge-ig.sig-hold {
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.15) 0%, rgba(100, 116, 139, 0.08) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  box-shadow: 0 4px 20px rgba(148, 163, 184, 0.08);
+}
+
+.signal-desc-ig {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  margin: 0 0 1rem 0;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.price-roadmap-ig {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 0.85rem;
+}
+
+.roadmap-title-ig {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin: 0 0 0.65rem 0;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.roadmap-grid-ig {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.level-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.35rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.level-box .lbl {
+  font-size: 0.58rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.level-box .val {
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-family: 'Outfit', sans-serif;
+}
+
+.level-box.box-red {
+  background-color: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.level-box.box-blue {
+  background-color: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+}
+
+.level-box.box-green {
+  background-color: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+}
+
+.range-meter-container-ig {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.meter-bar-ig {
+  position: relative;
+  height: 6px;
+  margin: 0.35rem 0;
+}
+
+.meter-base-ig {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.accumulation-bar-ig {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: rgba(234, 179, 8, 0.4);
+  border-radius: 3px;
+}
+
+.cmp-pin-ig {
+  position: absolute;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  border: 2px solid #ffffff;
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.8);
+  z-index: 10;
+}
+
+.meter-labels-ig {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.buy-range-note-ig {
+  font-size: 0.7rem;
+  text-align: center;
+  color: #cbd5e1;
+  margin-top: 0.25rem;
+}
+
+.buy-range-note-ig .range-highlight {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+/* Key Metrics Slide Styles */
+.metrics-grid-ig {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.metric-card-ig {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.metric-card-ig .m-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+  letter-spacing: 0.03em;
+}
+
+.metric-card-ig .m-value {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 0.2rem;
+}
+
+.metric-card-ig .m-insight {
+  font-size: 0.65rem;
+  color: #cbd5e1;
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* Fundamental Thesis Slide Styles */
+.thesis-grid-ig {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.thesis-box-ig {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 0.85rem;
+}
+
+.thesis-box-ig h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.thesis-box-ig ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.thesis-box-ig li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.thesis-box-ig li p {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #cbd5e1;
+}
+
+.dot-check, .dot-alert {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.dot-check {
+  color: #4ade80;
+}
+
+.dot-alert {
+  color: #f87171;
+}
+
+/* Action Playbook Slide Styles */
+.playbook-stack-ig {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.playbook-item-ig {
+  background-color: rgba(255, 255, 255, 0.015);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+}
+
+.playbook-item-ig.entry-strategy-ig {
+  border: 1px solid rgba(16, 185, 129, 0.08);
+  border-left: 3px solid #10b981;
+}
+
+.playbook-item-ig.profit-strategy-ig {
+  border: 1px solid rgba(59, 130, 246, 0.08);
+  border-left: 3px solid #3b82f6;
+}
+
+.playbook-item-ig.swing-strategy-ig {
+  border: 1px solid rgba(245, 158, 11, 0.08);
+  border-left: 3px solid #f59e0b;
+}
+
+.playbook-heading-ig {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.playbook-heading-ig .icon {
+  font-size: 0.8rem;
+}
+
+.playbook-item-ig .desc {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+  margin: 0;
+}
+
+/* ==========================================
+   INSTAGRAM SLIDE ADDITIONS & BRANDING
+   ========================================== */
+
+/* Slide 1 - Spicy Background & Outlined Text */
+.slide-spicy-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.bg-ticker-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: 5.5rem;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.025);
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  white-space: nowrap;
+  letter-spacing: 0.05em;
+}
+
+.bg-chart-svg {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 60%;
+}
+
+/* Swipe Indicator curvy arrow */
+.swipe-indicator-ig {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  color: #38bdf8;
+  animation: pulseSwipe 1.8s infinite ease-in-out;
+}
+
+.swipe-text {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.curvy-arrow-ig {
+  width: 16px;
+  height: 16px;
+}
+
+@keyframes pulseSwipe {
+  0%, 100% {
+    transform: translateX(0);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateX(6px);
+    opacity: 1;
+  }
+}
+
+/* Slide 5 - Instagram Save/Share Call-to-Actions */
+.instagram-cta-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  margin-top: auto;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.cta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.cta-item span {
+  font-size: 0.68rem;
+}
+
+.arrow-svg {
+  width: 14px;
+  height: 14px;
+  color: #38bdf8;
+}
+
+.left-cta {
+  color: #f87171;
+}
+
+.right-cta {
+  color: #fbbf24;
+}
+
+.cta-middle {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Ensure slide content stays on top of spicy background */
+.slide-header, .slide-content, .slide-footer {
+  position: relative;
+  z-index: 2;
+}
+
 

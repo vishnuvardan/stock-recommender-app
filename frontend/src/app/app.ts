@@ -10,6 +10,8 @@ import {
   ResearchResponse
 } from './services/recommendation.service';
 
+declare var html2canvas: any;
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -46,6 +48,7 @@ export class App implements OnInit {
   protected readonly isResearchLoading = signal<boolean>(false);
   protected readonly researchError = signal<string | null>(null);
   protected readonly researchData = signal<ResearchResponse | null>(null);
+  protected readonly activeSlideIndex = signal<number>(0);
 
   // Default disclaimer text displayed prior to load
   protected readonly defaultDisclaimer = 
@@ -257,6 +260,7 @@ export class App implements OnInit {
     this.recommenderService.getResearch(symbol).subscribe({
       next: (data) => {
         this.researchData.set(data);
+        this.activeSlideIndex.set(0);
         this.isResearchLoading.set(false);
       },
       error: (err) => {
@@ -348,6 +352,123 @@ export class App implements OnInit {
     }).catch(err => {
       console.error('Failed to copy text: ', err);
       alert('Failed to copy to clipboard. Please copy manually.');
+    });
+  }
+
+  nextSlide(): void {
+    const current = this.activeSlideIndex();
+    if (current < 4) {
+      this.activeSlideIndex.set(current + 1);
+    }
+  }
+
+  prevSlide(): void {
+    const current = this.activeSlideIndex();
+    if (current > 0) {
+      this.activeSlideIndex.set(current - 1);
+    }
+  }
+
+  setSlide(index: number): void {
+    if (index >= 0 && index < 5) {
+      this.activeSlideIndex.set(index);
+    }
+  }
+
+  downloadSlide(slideIndex: number): void {
+    const slideElement = document.getElementById(`instagram-slide-${slideIndex}`);
+    if (!slideElement) {
+      alert('Slide element not found.');
+      return;
+    }
+
+    const symbol = this.researchData()?.symbol || 'STOCK';
+    
+    if (typeof html2canvas === 'undefined') {
+      alert('html2canvas library is not loaded yet. Please try again.');
+      return;
+    }
+
+    html2canvas(slideElement, {
+      scale: 2.5, // 432px * 2.5 = 1080px width, 540px * 2.5 = 1350px height
+      useCORS: true,
+      logging: false,
+      backgroundColor: null
+    }).then((canvas: any) => {
+      const imgData = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `${symbol}_slide_${slideIndex + 1}.png`;
+      link.click();
+    }).catch((err: any) => {
+      console.error('Error generating image:', err);
+      alert('Failed to generate slide image.');
+    });
+  }
+
+  async downloadAllSlides(): Promise<void> {
+    if (typeof html2canvas === 'undefined') {
+      alert('html2canvas library is not loaded yet. Please try again.');
+      return;
+    }
+
+    const symbol = this.researchData()?.symbol || 'STOCK';
+
+    for (let i = 0; i < 5; i++) {
+      const slideElement = document.getElementById(`instagram-slide-${i}`);
+      if (!slideElement) continue;
+
+      try {
+        const canvas = await html2canvas(slideElement, {
+          scale: 2.5,
+          useCORS: true,
+          logging: false,
+          backgroundColor: null
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = imgData;
+        link.download = `${symbol}_slide_${i + 1}.png`;
+        link.click();
+        
+        // Brief delay between downloads
+        await new Promise(resolve => setTimeout(resolve, 350));
+      } catch (err) {
+        console.error(`Error generating slide ${i + 1} image:`, err);
+      }
+    }
+  }
+
+  downloadNewsCard(event: MouseEvent, index: number): void {
+    event.stopPropagation(); // Prevent navigation click
+    
+    const cardElement = document.getElementById(`news-card-${index}`);
+    if (!cardElement) {
+      alert('Card element not found.');
+      return;
+    }
+
+    const symbol = this.articles()[index]?.relatedStock || 'NEWS';
+    
+    if (typeof html2canvas === 'undefined') {
+      alert('html2canvas library is not loaded yet. Please try again.');
+      return;
+    }
+
+    html2canvas(cardElement, {
+      scale: 3, // High resolution export
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff'
+    }).then((canvas: any) => {
+      const imgData = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `${symbol}_news_recommendation.png`;
+      link.click();
+    }).catch((err: any) => {
+      console.error('Error generating card image:', err);
+      alert('Failed to generate image.');
     });
   }
 }

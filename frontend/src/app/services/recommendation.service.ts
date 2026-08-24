@@ -66,6 +66,13 @@ export interface ResearchPriceTarget {
   currentPrice?: number;
 }
 
+export interface ResearchNewsItem {
+  headline: string;
+  summary: string;
+  impact: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  date: string;
+}
+
 export interface ResearchResponse {
   symbol: string;
   companyName: string;
@@ -84,6 +91,7 @@ export interface ResearchResponse {
     text: string;
   };
   priceTargetAnalysis: ResearchPriceTarget;
+  latestNews?: ResearchNewsItem[];
 }
 
 @Injectable({

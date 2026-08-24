@@ -405,7 +405,15 @@ Your response must strictly be a JSON object matching this schema:
     "accumulationMax": 280.0,
     "targetPrice": 380.0,
     "stopLoss": 220.0
-  }
+  },
+  "latestNews": [
+    {
+      "headline": "A concise headline summarizing the event",
+      "impact": "BULLISH" | "BEARISH" | "NEUTRAL",
+      "summary": "1-2 sentences explaining what happened and its impact.",
+      "date": "Estimated time or date of the event"
+    }
+  ]
 }`;
 
 // JSON schema for Gemini validation
@@ -473,9 +481,33 @@ const RESEARCH_RESPONSE_SCHEMA = {
         stopLoss: { type: "number" }
       },
       required: ["accumulationMin", "accumulationMax", "targetPrice", "stopLoss"]
+    },
+    latestNews: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          headline: { type: "string" },
+          summary: { type: "string" },
+          impact: { type: "string", enum: ["BULLISH", "BEARISH", "NEUTRAL"] },
+          date: { type: "string" }
+        },
+        required: ["headline", "summary", "impact", "date"]
+      }
     }
   },
-  required: ["symbol", "companyName", "signal", "signalReason", "overview", "financials", "thesis", "guidance", "priceTargetAnalysis"]
+  required: [
+    "symbol",
+    "companyName",
+    "signal",
+    "signalReason",
+    "overview",
+    "financials",
+    "thesis",
+    "guidance",
+    "priceTargetAnalysis",
+    "latestNews"
+  ]
 };
 
 // Endpoint 1: Auto-suggestions
