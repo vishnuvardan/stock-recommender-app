@@ -7,7 +7,9 @@ import {
   RecommendationsResponse, 
   NewsItem,
   StockSuggestion,
-  ResearchResponse
+  ResearchResponse,
+  PremarketReportResponse,
+  PremarketSlide
 } from './services/recommendation.service';
 
 declare var html2canvas: any;
@@ -42,13 +44,25 @@ export class App implements OnInit {
   protected readonly neutralCount = computed(() => this.countByClassification('No change'));
 
   // Stock Research signals
-  protected readonly activeTab = signal<'news' | 'research'>('news');
+  protected readonly activeTab = signal<'news' | 'research' | 'premarket'>('news');
   protected readonly researchQuerySymbol = signal<string>('');
   protected readonly suggestions = signal<StockSuggestion[]>([]);
   protected readonly isResearchLoading = signal<boolean>(false);
   protected readonly researchError = signal<string | null>(null);
   protected readonly researchData = signal<ResearchResponse | null>(null);
   protected readonly activeSlideIndex = signal<number>(0);
+
+  // Premarket report signals
+  protected readonly premarketData = signal<PremarketReportResponse | null>(null);
+  protected readonly isPremarketLoading = signal<boolean>(false);
+  protected readonly premarketError = signal<string | null>(null);
+  protected readonly activePremarketSlideIndex = signal<number>(0);
+
+  // Subscription signals
+  protected readonly subscriberEmail = signal<string>('');
+  protected readonly isSubscribing = signal<boolean>(false);
+  protected readonly subscriptionSuccess = signal<boolean>(false);
+  protected readonly subscriptionError = signal<string | null>(null);
 
   // Default disclaimer text displayed prior to load
   protected readonly defaultDisclaimer = 
@@ -73,6 +87,11 @@ export class App implements OnInit {
         } else {
           this.researchData.set(null);
           this.researchError.set(null);
+        }
+      } else if (page === 'premarket') {
+        this.activeTab.set('premarket');
+        if (!this.premarketData()) {
+          this.fetchPremarketReport();
         }
       } else {
         this.activeTab.set('news');
@@ -193,13 +212,21 @@ export class App implements OnInit {
   });
 
   // Switch tabs programmatically updating query params
-  switchTab(tab: 'news' | 'research'): void {
+  switchTab(tab: 'news' | 'research' | 'premarket'): void {
     this.activeTab.set(tab);
     if (tab === 'news') {
       this.router.navigate([], {
         queryParams: { page: 'news', stock: null },
         queryParamsHandling: 'merge'
       });
+    } else if (tab === 'premarket') {
+      this.router.navigate([], {
+        queryParams: { page: 'premarket', stock: null },
+        queryParamsHandling: 'merge'
+      });
+      if (!this.premarketData()) {
+        this.fetchPremarketReport();
+      }
     } else {
       const stock = this.researchQuerySymbol();
       this.router.navigate([], {
@@ -439,6 +466,109 @@ export class App implements OnInit {
     }
   }
 
+  fetchPremarketReport(): void {
+    this.isPremarketLoading.set(true);
+    this.premarketError.set(null);
+    this.premarketData.set(null);
+
+    this.recommenderService.getPremarketReport().subscribe({
+      next: (response) => {
+        this.premarketData.set(response);
+        this.activePremarketSlideIndex.set(0);
+        this.isPremarketLoading.set(false);
+      },
+      error: (err) => {
+        console.error('Error fetching premarket report:', err);
+        const msg = err.error?.error || err.error?.message || 'Failed to retrieve premarket report. Please try again.';
+        this.premarketError.set(msg);
+        this.isPremarketLoading.set(false);
+      }
+    });
+  }
+
+  prevPremarketSlide(): void {
+    const current = this.activePremarketSlideIndex();
+    if (current > 0) {
+      this.activePremarketSlideIndex.set(current - 1);
+    }
+  }
+
+  nextPremarketSlide(): void {
+    const current = this.activePremarketSlideIndex();
+    const slides = this.premarketData()?.slides || [];
+    if (current < slides.length - 1) {
+      this.activePremarketSlideIndex.set(current + 1);
+    }
+  }
+
+  setPremarketSlide(index: number): void {
+    const slides = this.premarketData()?.slides || [];
+    if (index >= 0 && index < slides.length) {
+      this.activePremarketSlideIndex.set(index);
+    }
+  }
+
+  downloadPremarketSlide(slideIndex: number): void {
+    const slideElement = document.getElementById(`premarket-slide-${slideIndex}`);
+    if (!slideElement) {
+      alert('Slide element not found.');
+      return;
+    }
+
+    if (typeof html2canvas === 'undefined') {
+      alert('html2canvas library is not loaded yet. Please try again.');
+      return;
+    }
+
+    html2canvas(slideElement, {
+      scale: 2.5, // 432px * 2.5 = 1080px width, 540px * 2.5 = 1350px height
+      useCORS: true,
+      logging: false,
+      backgroundColor: null
+    }).then((canvas: any) => {
+      const imgData = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `Premarket_Slide_${slideIndex + 1}.png`;
+      link.click();
+    }).catch((err: any) => {
+      console.error('Error generating premarket slide image:', err);
+      alert('Failed to generate slide image.');
+    });
+  }
+
+  async downloadAllPremarketSlides(): Promise<void> {
+    if (typeof html2canvas === 'undefined') {
+      alert('html2canvas library is not loaded yet. Please try again.');
+      return;
+    }
+
+    const slides = this.premarketData()?.slides || [];
+    for (let i = 0; i < slides.length; i++) {
+      const slideElement = document.getElementById(`premarket-slide-${i}`);
+      if (!slideElement) continue;
+
+      try {
+        const canvas = await html2canvas(slideElement, {
+          scale: 2.5,
+          useCORS: true,
+          logging: false,
+          backgroundColor: null
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = imgData;
+        link.download = `Premarket_Slide_${i + 1}.png`;
+        link.click();
+        
+        // Brief delay between downloads
+        await new Promise(resolve => setTimeout(resolve, 350));
+      } catch (err) {
+        console.error(`Error generating premarket slide ${i + 1} image:`, err);
+      }
+    }
+  }
+
   downloadNewsCard(event: MouseEvent, index: number): void {
     event.stopPropagation(); // Prevent navigation click
     
@@ -469,6 +599,34 @@ export class App implements OnInit {
     }).catch((err: any) => {
       console.error('Error generating card image:', err);
       alert('Failed to generate image.');
+    });
+  }
+
+  subscribeEmail(event: Event): void {
+    event.preventDefault();
+    const email = this.subscriberEmail().trim().toLowerCase();
+    
+    if (!email || !email.includes('@')) {
+      this.subscriptionError.set('Please enter a valid email address.');
+      this.subscriptionSuccess.set(false);
+      return;
+    }
+
+    this.isSubscribing.set(true);
+    this.subscriptionError.set(null);
+    this.subscriptionSuccess.set(false);
+
+    this.recommenderService.subscribeEmail(email).subscribe({
+      next: (res) => {
+        this.isSubscribing.set(false);
+        this.subscriptionSuccess.set(true);
+        this.subscriberEmail.set(''); // Clear input
+      },
+      error: (err) => {
+        this.isSubscribing.set(false);
+        const errMsg = err.error?.error || 'Failed to subscribe. Please try again later.';
+        this.subscriptionError.set(errMsg);
+      }
     });
   }
 }

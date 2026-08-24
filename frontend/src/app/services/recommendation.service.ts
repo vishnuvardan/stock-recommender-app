@@ -94,6 +94,33 @@ export interface ResearchResponse {
   latestNews?: ResearchNewsItem[];
 }
 
+export interface PremarketSlide {
+  slideNumber: number;
+  type: 'market_overview' | 'stock_impact';
+  title: string;
+  subtitle: string;
+  headline: string;
+  badge: string;
+  cues: string;
+  details: string;
+  levels: string;
+}
+
+export interface PremarketReportResponse {
+  disclaimer: string;
+  lastUpdated: string;
+  processedByModel?: string;
+  marketOverview: {
+    niftyCurrent: string;
+    niftyChange: string;
+    niftyChangePercent: string;
+    sensexCurrent: string;
+    sensexChange: string;
+    sensexChangePercent: string;
+  };
+  slides: PremarketSlide[];
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -114,5 +141,13 @@ export class RecommendationService {
 
   getResearch(symbol: string): Observable<ResearchResponse> {
     return this.http.get<ResearchResponse>(`/api/research?symbol=${encodeURIComponent(symbol)}`);
+  }
+
+  getPremarketReport(): Observable<PremarketReportResponse> {
+    return this.http.get<PremarketReportResponse>('/api/premarket');
+  }
+
+  subscribeEmail(email: string): Observable<{ success: boolean; message?: string }> {
+    return this.http.post<{ success: boolean; message?: string }>('/api/subscribe', { email });
   }
 }
