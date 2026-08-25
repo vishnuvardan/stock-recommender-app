@@ -1065,7 +1065,10 @@ app.get('/api/cron/premarket-email', async (req, res) => {
   console.log(`[${new Date().toISOString()}] GET /api/cron/premarket-email: Triggered cron job...`);
 
   // Secure cron route: check for Vercel Cron header or local secret query param
-  const isVercelCron = req.headers['x-vercel-cron'] === '1';
+  const isVercelCron = 
+    req.headers['x-vercel-cron'] === '1' || 
+    !!req.headers['x-vercel-cron-schedule'] || 
+    (req.headers['user-agent'] && req.headers['user-agent'].includes('vercel-cron'));
   const isLocalSecret = req.query.secret === 'local';
 
   if (!isVercelCron && !isLocalSecret) {
