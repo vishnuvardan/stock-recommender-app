@@ -64,6 +64,8 @@ export class App implements OnInit {
   protected readonly instagramShareStatus = signal<'idle' | 'capturing' | 'uploading' | 'success' | 'error'>('idle');
   protected readonly instagramError = signal<string | null>(null);
   protected readonly instagramCaption = signal<string>('');
+  protected readonly instagramAdminSecret = signal<string>('');
+
 
   // Subscription signals
   protected readonly subscriberEmail = signal<string>('');
@@ -609,7 +611,9 @@ export class App implements OnInit {
     this.isInstagramModalOpen.set(false);
     this.instagramShareStatus.set('idle');
     this.instagramError.set(null);
+    this.instagramAdminSecret.set('');
   }
+
 
   async shareToInstagram(): Promise<void> {
     if (this.isInstagramSharing()) return;
@@ -655,8 +659,9 @@ export class App implements OnInit {
       this.instagramShareStatus.set('uploading');
 
       // 2. Send images and caption to backend
-      this.recommenderService.shareToInstagram(base64Images, this.instagramCaption()).subscribe({
+      this.recommenderService.shareToInstagram(base64Images, this.instagramCaption(), this.instagramAdminSecret()).subscribe({
         next: (res) => {
+
           this.instagramShareStatus.set('success');
           this.isInstagramSharing.set(false);
         },

@@ -2797,6 +2797,25 @@
   margin-top: 0.25rem;
 }
 
+/* Secret Password Input */
+.instagram-secret-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #1e293b;
+  background-color: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+.instagram-secret-input:focus {
+  outline: none;
+  border-color: #cc2366;
+  box-shadow: 0 0 0 3px rgba(204, 35, 102, 0.15);
+}
+
 /* Modal Footer */
 .instagram-modal-footer {
   padding: 1rem 1.5rem;

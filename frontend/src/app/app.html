@@ -973,6 +973,19 @@
             </div>
           </div>
 
+          <div class="instagram-secret-section" style="margin-top: 1.25rem;">
+            <label for="ig-secret-input" class="caption-label">Admin Access Key:</label>
+            <input
+              id="ig-secret-input"
+              type="password"
+              class="instagram-secret-input"
+              [(ngModel)]="instagramAdminSecret"
+              [disabled]="isInstagramSharing()"
+              placeholder="Enter secure admin access key..."
+            />
+          </div>
+
+
           <!-- Loading & Stepper Status Overlay -->
           @if (isInstagramSharing()) {
             <div class="instagram-modal-loading-overlay">
@@ -1029,13 +1042,14 @@
             <button class="btn btn-secondary" (click)="closeInstagramShareModal()" [disabled]="isInstagramSharing()">
               Cancel
             </button>
-            <button class="btn btn-instagram" (click)="shareToInstagram()" [disabled]="isInstagramSharing() || instagramCaption().trim().length === 0">
+            <button class="btn btn-instagram" (click)="shareToInstagram()" [disabled]="isInstagramSharing() || instagramCaption().trim().length === 0 || instagramAdminSecret().trim().length === 0">
               @if (isInstagramSharing()) {
                 <span class="btn-spinner"></span> Posting...
               } @else {
                 🚀 Confirm & Post
               }
             </button>
+
           </div>
         }
       </div>

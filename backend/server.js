@@ -1654,6 +1654,18 @@ app.post('/api/instagram/share', async (req, res) => {
       return res.status(500).json({ error: 'Vercel Blob storage token (BLOB_READ_WRITE_TOKEN) is missing. Please connect Vercel Blob.' });
     }
     
+    const adminSecret = process.env.ADMIN_SECRET;
+    const clientSecret = req.headers['x-admin-secret'];
+    
+    if (!adminSecret) {
+      return res.status(500).json({ error: 'Server configuration error: ADMIN_SECRET is not set in environment.' });
+    }
+    if (clientSecret !== adminSecret) {
+      console.warn(`[${new Date().toISOString()}] Unauthorized attempt to post to Instagram. Invalid key.`);
+      return res.status(401).json({ error: 'Unauthorized: Invalid admin secret key.' });
+    }
+
+    
     // 1. Upload base64 images to Vercel Blob in parallel
     console.log(`[${new Date().toISOString()}] Instagram Share: Uploading ${images.length} images to Vercel Blob...`);
     const uploadPromises = images.map(async (base64Str, index) => {
