@@ -1310,42 +1310,33 @@ Filter this news for items impacting the Indian stock market (NSE/BSE) and gener
       </html>
     `;
 
-    // 6. Broadcast via Resend BCC in batches of 50
-    console.log(`[${new Date().toISOString()}] Cron: Preparing Resend broadcast...`);
+    // 6. Broadcast via Resend: Send directly to each subscriber (essential for Sandbox/onboarding@resend.dev accounts)
+    console.log(`[${new Date().toISOString()}] Cron: Preparing Resend broadcast to ${activeContacts.length} subscribers...`);
 
-    const BATCH_SIZE = 50;
-    const sendPromises = [];
-
-    for (let i = 0; i < activeContacts.length; i += BATCH_SIZE) {
-      const batch = activeContacts.slice(i, i + BATCH_SIZE);
-      console.log(`[${new Date().toISOString()}] Cron: Dispatching batch ${Math.floor(i / BATCH_SIZE) + 1} with ${batch.length} subscribers...`);
-
+    const sendPromises = activeContacts.map(email => {
       const payload = {
-        from: 'Premarket Report <onboarding@resend.dev>',
-        to: 'onboarding@resend.dev',
-        bcc: batch,
+        from: process.env.FROM_EMAIL || 'Premarket Report <onboarding@resend.dev>',
+        to: email,
         subject: `🇮🇳 India NSE/BSE Premarket Report - ${dateString}`,
         html: emailHtml
       };
 
-      sendPromises.push(
-        axios.post('https://api.resend.com/emails', payload, {
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        }).then(res => ({ success: true, size: batch.length, status: res.status }))
-          .catch(err => {
-            console.error(`[Resend] Batch send failed:`, err.response?.data || err.message);
-            return { success: false, size: batch.length, error: err.response?.data?.message || err.message };
-          })
-      );
-    }
+      return axios.post('https://api.resend.com/emails', payload, {
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }).then(res => ({ success: true, email, status: res.status }))
+        .catch(err => {
+          console.error(`[Resend] Direct send failed for ${email}:`, err.response?.data || err.message);
+          return { success: false, email, error: err.response?.data?.message || err.message };
+        });
+    });
 
     const results = await Promise.all(sendPromises);
-    const successCount = results.filter(r => r.success).reduce((acc, r) => acc + r.size, 0);
-    const failureCount = results.filter(r => !r.success).reduce((acc, r) => acc + r.size, 0);
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.filter(r => !r.success).length;
 
     console.log(`[${new Date().toISOString()}] Cron: Broadcast completed. Dispatched: ${successCount} successfully, ${failureCount} failed.`);
 
