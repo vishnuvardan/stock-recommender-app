@@ -147,6 +147,10 @@ export class RecommendationService {
     return this.http.get<PremarketReportResponse>('/api/premarket');
   }
 
+  shareToInstagram(images: string[], caption: string): Observable<{ success: boolean; mediaId: string }> {
+    return this.http.post<{ success: boolean; mediaId: string }>('/api/instagram/share', { images, caption });
+  }
+
   subscribeEmail(email: string): Observable<{ success: boolean; message?: string }> {
     return this.http.post<{ success: boolean; message?: string }>('/api/subscribe', { email });
   }

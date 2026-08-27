@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { put, del } from '@vercel/blob';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // Enable CORS for frontend integration
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Initialize Google GenAI client
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1636,8 +1637,168 @@ Filter this news for items impacting the Indian stock market (NSE/BSE) and gener
 });
 
 
+// -------------------------------------------------------------
+// Instagram Carousel Sharing Endpoint
+// -------------------------------------------------------------
+app.post('/api/instagram/share', async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] Instagram Share: Starting sharing flow...`);
+  
+  try {
+    const { images, caption } = req.body;
+    
+    if (!images || !Array.isArray(images) || images.length < 2 || images.length > 10) {
+      return res.status(400).json({ error: 'Instagram carousel requires between 2 and 10 images.' });
+    }
+    
+    const igUserId = process.env.IG_USER_ID;
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    
+    if (!igUserId || !accessToken) {
+      return res.status(500).json({ error: 'Instagram credentials (IG_USER_ID or META_ACCESS_TOKEN) are not configured on the server.' });
+    }
+    
+    if (!blobToken) {
+      return res.status(500).json({ error: 'Vercel Blob storage token (BLOB_READ_WRITE_TOKEN) is missing. Please connect Vercel Blob.' });
+    }
+    
+    // 1. Upload base64 images to Vercel Blob in parallel
+    console.log(`[${new Date().toISOString()}] Instagram Share: Uploading ${images.length} images to Vercel Blob...`);
+    const uploadPromises = images.map(async (base64Str, index) => {
+      const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        throw new Error(`Invalid base64 string format at index ${index}`);
+      }
+      
+      const buffer = Buffer.from(matches[2], 'base64');
+      const contentType = matches[1];
+      const extension = contentType.split('/')[1] || 'png';
+      const filename = `premarket-slide-${Date.now()}-${index}.${extension}`;
+      
+      const blob = await put(filename, buffer, {
+        access: 'public',
+        contentType: contentType,
+        token: blobToken
+      });
+
+      
+      return blob.url;
+    });
+    
+    const imageUrls = await Promise.all(uploadPromises);
+    console.log(`[${new Date().toISOString()}] Instagram Share: Successfully uploaded all images. URLs:`, imageUrls);
+    
+    // 2. Create Instagram media container for each image in parallel
+    console.log(`[${new Date().toISOString()}] Instagram Share: Creating individual media containers...`);
+    const containerPromises = imageUrls.map(async (url, index) => {
+      const mediaContainerUrl = `https://graph.facebook.com/v20.0/${igUserId}/media`;
+      const response = await axios.post(mediaContainerUrl, null, {
+        params: {
+          image_url: url,
+          is_carousel_item: true,
+          access_token: accessToken
+        }
+      });
+      return response.data.id;
+    });
+    
+    const containerIds = await Promise.all(containerPromises);
+    console.log(`[${new Date().toISOString()}] Instagram Share: Container IDs created:`, containerIds);
+    
+    // 3. Poll each container status until they are all FINISHED in parallel
+    console.log(`[${new Date().toISOString()}] Instagram Share: Waiting for containers to process...`);
+    const checkContainerStatus = async (id) => {
+      const checkUrl = `https://graph.facebook.com/v20.0/${id}`;
+      let attempts = 0;
+      const maxAttempts = 15;
+      
+      while (attempts < maxAttempts) {
+        const response = await axios.get(checkUrl, {
+          params: {
+            fields: 'status_code',
+            access_token: accessToken
+          }
+        });
+        
+        const status = response.data.status_code;
+        if (status === 'FINISHED') {
+          return true;
+        }
+        if (status === 'ERROR') {
+          throw new Error(`Container ${id} failed processing with status ERROR`);
+        }
+        
+        // Wait 1.5s before polling again
+        await new Promise(r => setTimeout(r, 1500));
+        attempts++;
+      }
+      throw new Error(`Container ${id} processing timed out`);
+    };
+    
+    await Promise.all(containerIds.map(id => checkContainerStatus(id)));
+    console.log(`[${new Date().toISOString()}] Instagram Share: All media containers are FINISHED.`);
+    
+    // 4. Create the carousel container
+    console.log(`[${new Date().toISOString()}] Instagram Share: Creating parent CAROUSEL container...`);
+    const carouselCreateUrl = `https://graph.facebook.com/v20.0/${igUserId}/media`;
+    const carouselResponse = await axios.post(carouselCreateUrl, null, {
+      params: {
+        media_type: 'CAROUSEL',
+        children: containerIds.join(','),
+        caption: caption || '',
+        access_token: accessToken
+      }
+    });
+    
+    const carouselContainerId = carouselResponse.data.id;
+    console.log(`[${new Date().toISOString()}] Instagram Share: Parent carousel container ID: ${carouselContainerId}`);
+    
+    // Wait briefly to allow Facebook's DB to settle
+    await new Promise(r => setTimeout(r, 2000));
+    
+    // 5. Publish the carousel container
+    console.log(`[${new Date().toISOString()}] Instagram Share: Publishing post...`);
+    const publishUrl = `https://graph.facebook.com/v20.0/${igUserId}/media_publish`;
+    const publishResponse = await axios.post(publishUrl, null, {
+      params: {
+        creation_id: carouselContainerId,
+        access_token: accessToken
+      }
+    });
+    
+    const mediaId = publishResponse.data.id;
+    console.log(`[${new Date().toISOString()}] Instagram Share: Post published successfully! Media ID: ${mediaId}`);
+    
+    // 6. Clean up Vercel Blob in the background (non-blocking)
+    imageUrls.forEach(url => {
+      del(url, { token: blobToken }).catch(err => {
+        console.error(`[${new Date().toISOString()}] Instagram Share: Cleanup failed for ${url}:`, err.message);
+      });
+    });
+    
+    return res.json({
+      success: true,
+      mediaId,
+      timeTakenMs: Date.now() - startTime
+    });
+    
+  } catch (error) {
+    const errorData = error.response?.data?.error || {};
+    console.error(`[${new Date().toISOString()}] Instagram Share Error:`, errorData.message || error.message);
+    
+    return res.status(500).json({
+      error: 'Instagram sharing failed',
+      details: errorData.message || error.message,
+      fbError: errorData
+    });
+  }
+});
+
+
 // Load instruments into cache on module initialization
 loadInstruments();
+
 
 // Start the server
 app.listen(PORT, () => {

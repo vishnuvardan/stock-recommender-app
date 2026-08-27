@@ -2612,5 +2612,367 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Instagram Integration Styling */
+.btn-instagram {
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.btn-instagram:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 39, 67, 0.25);
+}
+.btn-instagram:disabled {
+  background: #cbd5e1 !important;
+  color: #94a3b8 !important;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Modal Overlay & Container */
+.instagram-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(15, 23, 42, 0.6); /* Slate-900 with transparency */
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: modal-fade-in 0.25s ease-out;
+}
+
+.instagram-modal-content {
+  background-color: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  animation: modal-slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Header */
+.instagram-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.instagram-modal-header h3 {
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.close-modal-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+.close-modal-btn:hover:not(:disabled) {
+  color: #0f172a;
+}
+
+/* Body */
+.instagram-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  position: relative;
+}
+
+/* Thumbnail Grid */
+.instagram-modal-preview {
+  margin-bottom: 1.5rem;
+}
+.preview-label, .caption-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+.slides-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.slide-mini-thumb {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem;
+  position: relative;
+  aspect-ratio: 4 / 5; /* Keep same aspect ratio */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.thumb-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+.thumb-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+.badge-overview {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+}
+.badge-impact {
+  background-color: #fffbeb;
+  color: #b45309;
+}
+.thumb-number {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.thumb-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Caption Field */
+.instagram-caption-section {
+  position: relative;
+}
+.instagram-caption-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #1e293b;
+  resize: vertical;
+  background-color: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+.instagram-caption-textarea:focus {
+  outline: none;
+  border-color: #cc2366;
+  box-shadow: 0 0 0 3px rgba(204, 35, 102, 0.15);
+}
+.caption-char-count {
+  text-align: right;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+}
+
+/* Modal Footer */
+.instagram-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background-color: #f8fafc;
+}
+
+/* Stepper & Loading Overlay */
+.instagram-modal-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+.loading-status-box {
+  text-align: center;
+  max-width: 320px;
+  width: 100%;
+}
+.loading-status-box h4 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.1rem;
+  color: #0f172a;
+  margin: 1rem 0 1.5rem 0;
+}
+.spinner-large {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(220, 39, 67, 0.1);
+  border-top-color: #cc2366;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+.sharing-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+  width: 100%;
+  padding-left: 2rem;
+}
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+.step-item.active {
+  opacity: 1;
+  font-weight: 700;
+  color: #cc2366;
+}
+.step-item.done {
+  opacity: 1;
+  color: #10b981;
+}
+.step-icon {
+  font-size: 1.1rem;
+}
+.step-text {
+  font-size: 0.85rem;
+}
+.step-line {
+  width: 2px;
+  height: 12px;
+  background-color: #cbd5e1;
+  margin-left: 0.55rem;
+}
+.step-item.done + .step-line {
+  background-color: #10b981;
+}
+
+/* Success Overlay */
+.instagram-modal-success-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+.success-box {
+  text-align: center;
+  max-width: 380px;
+}
+.success-icon-large {
+  font-size: 3.5rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+.success-box h4 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.3rem;
+  color: #0f172a;
+  margin: 0 0 0.5rem 0;
+}
+.success-box p {
+  font-size: 0.9rem;
+  color: #475569;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.5;
+}
+.btn-success-dismiss {
+  width: 120px;
+}
+
+/* Error Box */
+.instagram-error-box {
+  background-color: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.error-icon {
+  font-size: 1.2rem;
+}
+.error-msg-content {
+  flex: 1;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: left;
+}
+.error-msg-content strong {
+  color: #c53030;
+  display: block;
+  margin-bottom: 0.15rem;
+}
+.error-msg-content p {
+  color: #9b2c2c;
+  margin: 0;
+}
+
+/* Animations */
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-slide-up {
+  from { transform: translateY(12px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Adjust button placement and size on responsive viewports */
+@media (max-width: 640px) {
+  .slides-mini-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .slide-mini-thumb:last-child {
+    display: none; /* Hide 3rd slide preview on mobile to save space */
+  }
+}
+
+
 
 

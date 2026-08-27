@@ -58,6 +58,13 @@ export class App implements OnInit {
   protected readonly premarketError = signal<string | null>(null);
   protected readonly activePremarketSlideIndex = signal<number>(0);
 
+  // Instagram Share signals
+  protected readonly isInstagramModalOpen = signal<boolean>(false);
+  protected readonly isInstagramSharing = signal<boolean>(false);
+  protected readonly instagramShareStatus = signal<'idle' | 'capturing' | 'uploading' | 'success' | 'error'>('idle');
+  protected readonly instagramError = signal<string | null>(null);
+  protected readonly instagramCaption = signal<string>('');
+
   // Subscription signals
   protected readonly subscriberEmail = signal<string>('');
   protected readonly isSubscribing = signal<boolean>(false);
@@ -568,6 +575,109 @@ export class App implements OnInit {
       }
     }
   }
+
+  openInstagramShareModal(): void {
+    const data = this.premarketData();
+    if (!data || !data.slides || data.slides.length === 0) {
+      alert('No premarket data available to share.');
+      return;
+    }
+
+    const dateStr = data.lastUpdated ? new Date(data.lastUpdated).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }) : new Date().toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    this.instagramCaption.set(
+      `🇮🇳 Premarket Report - ${dateStr}\n\n` +
+      `Here is the market outlook and key stock updates for today. Swipe left to see details for Nifty levels and stock setups.\n\n` +
+      `#PremarketReport #IndianStockMarket #Nifty50 #Sensex #NSE #BSE #StockMarketIndia #Trading #Investing #MarketAnalysis #StockAnalysis`
+    );
+
+    this.instagramShareStatus.set('idle');
+    this.instagramError.set(null);
+    this.isInstagramModalOpen.set(true);
+  }
+
+  closeInstagramShareModal(): void {
+    if (this.isInstagramSharing()) return;
+    this.isInstagramModalOpen.set(false);
+    this.instagramShareStatus.set('idle');
+    this.instagramError.set(null);
+  }
+
+  async shareToInstagram(): Promise<void> {
+    if (this.isInstagramSharing()) return;
+
+    if (typeof html2canvas === 'undefined') {
+      alert('html2canvas library is not loaded yet. Please try again.');
+      return;
+    }
+
+    const slides = this.premarketData()?.slides || [];
+    if (slides.length === 0) {
+      alert('No slides to share.');
+      return;
+    }
+
+    this.isInstagramSharing.set(true);
+    this.instagramError.set(null);
+    this.instagramShareStatus.set('capturing');
+
+    const base64Images: string[] = [];
+
+    try {
+      // 1. Capture slides as base64 images
+      for (let i = 0; i < slides.length; i++) {
+        const slideElement = document.getElementById(`premarket-slide-${i}`);
+        if (!slideElement) {
+          throw new Error(`Slide element for slide #${i + 1} not found.`);
+        }
+
+        const canvas = await html2canvas(slideElement, {
+          scale: 2.5, // 1080x1350 Instagram resolution
+          useCORS: true,
+          logging: false,
+          backgroundColor: null
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+        base64Images.push(imgData);
+        // Brief delay between captures to prevent browser freezing
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      this.instagramShareStatus.set('uploading');
+
+      // 2. Send images and caption to backend
+      this.recommenderService.shareToInstagram(base64Images, this.instagramCaption()).subscribe({
+        next: (res) => {
+          this.instagramShareStatus.set('success');
+          this.isInstagramSharing.set(false);
+        },
+        error: (err) => {
+          console.error('Error sharing to Instagram:', err);
+          this.instagramShareStatus.set('error');
+          this.instagramError.set(
+            err.error?.details || err.error?.error || 'Failed to post carousel to Instagram. Please verify configuration.'
+          );
+          this.isInstagramSharing.set(false);
+        }
+      });
+
+    } catch (err: any) {
+      console.error('Error rendering slides for Instagram:', err);
+      this.instagramShareStatus.set('error');
+      this.instagramError.set(err.message || 'An error occurred while generating slides.');
+      this.isInstagramSharing.set(false);
+    }
+  }
+
 
   downloadNewsCard(event: MouseEvent, index: number): void {
     event.stopPropagation(); // Prevent navigation click
