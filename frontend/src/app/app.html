@@ -782,15 +782,10 @@
                         <div class="bg-ticker-text premarket-bg-text">INDIA NSE</div>
                       </div>
 
-                      <div class="slide-header">
-                        <span class="slide-branding">🇮🇳 {{ slide.title }}</span>
-                        <span class="slide-number">{{ slide.slideNumber }} / {{ premarketData()?.slides?.length }}</span>
-                      </div>
-
                       <div class="slide-content">
                         <!-- Headings -->
                         <h2 class="slide-main-title">{{ slide.subtitle }}</h2>
-                        <p class="slide-subtitle">{{ slide.headline }}</p>
+                        <p class="slide-subtitle">{{ slide.headline }}@if (slide.cmp) {  •  CMP: {{ slide.cmp }} }</p>
 
                         <div class="premarket-outlook-ig">
                           <div class="outlook-badge-ig" [class]="'outlook-' + (slide.badge || '').toLowerCase().replace(' ', '-')">
@@ -856,54 +851,13 @@
                         </div>
                       </div>
 
-                      <div class="slide-footer">
-                        <span class="disclaimer-mini">Not SEBI advice • Premarket Report</span>
-                        <span class="app-watermark">NSE/BSE Report</span>
                       </div>
-                    </div>
                   </div>
                 }
 
               </div>
             </div>
 
-            <!-- Subscription Panel -->
-            <div class="premarket-subscribe-card">
-              <div class="subscribe-header">
-                <span class="bell-icon">🔔</span>
-                <h3>Subscribe to Daily Premarket Briefs</h3>
-                <p>Get this NSE/BSE morning report delivered straight to your inbox every morning at 7:00 AM IST.</p>
-              </div>
-              <form (submit)="subscribeEmail($event)" class="subscribe-form">
-                <input 
-                  type="email" 
-                  placeholder="Enter your email address..." 
-                  [ngModel]="subscriberEmail()"
-                  (ngModelChange)="subscriberEmail.set($event)"
-                  name="subscriberEmail"
-                  required 
-                  [disabled]="isSubscribing()"
-                  class="subscribe-input"
-                />
-                <button type="submit" class="btn btn-primary btn-subscribe" [disabled]="isSubscribing() || !subscriberEmail().trim()">
-                  @if (isSubscribing()) {
-                    Subscribing...
-                  } @else {
-                    Subscribe
-                  }
-                </button>
-              </form>
-              @if (subscriptionSuccess()) {
-                <div class="success-message-panel">
-                  ✓ Successfully subscribed! You will receive daily premarket reports starting tomorrow.
-                </div>
-              }
-              @if (subscriptionError()) {
-                <div class="error-message-panel">
-                  ⚠️ {{ subscriptionError() }}
-                </div>
-              }
-            </div>
             
             <div class="quick-action-bar">
               <button class="btn btn-secondary btn-large" (click)="fetchPremarketReport()" [disabled]="isPremarketLoading()">

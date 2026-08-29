@@ -104,6 +104,7 @@ export interface PremarketSlide {
   cues: string;
   details: string;
   levels: string;
+  cmp?: string;
 }
 
 export interface PremarketReportResponse {
@@ -155,7 +156,4 @@ export class RecommendationService {
     );
   }
 
-  subscribeEmail(email: string): Observable<{ success: boolean; message?: string }> {
-    return this.http.post<{ success: boolean; message?: string }>('/api/subscribe', { email });
-  }
 }

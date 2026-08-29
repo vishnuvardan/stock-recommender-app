@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { put, del } from '@vercel/blob';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -997,6 +998,7 @@ Filter this news for items impacting the Indian stock market (NSE/BSE) and gener
 
     const premarketReport = JSON.parse(geminiResponseText);
     premarketReport.processedByModel = successfulModel;
+    await injectCmpToPremarketReport(premarketReport);
 
     console.log(`[${new Date().toISOString()}] Completed premarket report generation in ${Date.now() - startTime}ms.`);
     return res.json(premarketReport);
@@ -1010,690 +1012,237 @@ Filter this news for items impacting the Indian stock market (NSE/BSE) and gener
   }
 });
 
-// Endpoint: Subscribe to premarket reports
-app.post('/api/subscribe', async (req, res) => {
-  const email = (req.body.email || '').toString().trim().toLowerCase();
+// SVG Text Escaper and Wrapper Utilities
+function escapeSvgText(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
-  if (!email || !email.includes('@')) {
-    return res.status(400).json({ error: 'A valid email address is required.' });
-  }
+function wrapText(text, maxChars = 70) {
+  if (!text) return [];
+  const words = text.split(/\s+/);
+  const lines = [];
+  let currentLine = '';
 
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const audienceId = process.env.RESEND_AUDIENCE_ID;
-
-  if (!resendApiKey || !audienceId) {
-    console.error(`[Resend] Missing API keys: API_KEY_SET=${!!resendApiKey}, AUDIENCE_ID_SET=${!!audienceId}`);
-    return res.status(500).json({ error: 'Subscription service is not configured on the backend.' });
-  }
-
-  try {
-    console.log(`[${new Date().toISOString()}] Subscribing email: "${email}" to Resend audience: "${audienceId}"...`);
-
-    const url = `https://api.resend.com/audiences/${audienceId}/contacts`;
-    const response = await axios.post(url, {
-      email: email,
-      unsubscribed: false
-    }, {
-      headers: {
-        'Authorization': `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 5000
-    });
-
-    console.log(`[${new Date().toISOString()}] Resend contact subscription success for ${email}. Status: ${response.status}`);
-    return res.json({ success: true, message: 'Successfully subscribed to premarket briefs!' });
-
-  } catch (error) {
-    if (error.response) {
-      console.error(`[Resend] Error response status: ${error.response.status}. Data:`, JSON.stringify(error.response.data));
-      const message = error.response.data?.message || 'Failed to add subscription.';
-
-      // Handle duplicates gracefully
-      if (error.response.status === 409 || message.toLowerCase().includes('already exists')) {
-        return res.status(409).json({ error: 'You are already subscribed to our premarket report!' });
+  for (const word of words) {
+    if ((currentLine + ' ' + word).trim().length <= maxChars) {
+      currentLine = (currentLine + ' ' + word).trim();
+    } else {
+      if (currentLine) {
+        lines.push(currentLine);
       }
-      return res.status(error.response.status).json({ error: message });
+      currentLine = word;
     }
-    console.error(`[Resend] Fatal error subscribing email:`, error.message);
-    return res.status(500).json({ error: 'Failed to complete subscription. Please try again later.' });
   }
-});
-
-// Endpoint: Cron Job to broadcast premarket report via email
-app.get('/api/cron/premarket-email', async (req, res) => {
-  const startTime = Date.now();
-  console.log(`[${new Date().toISOString()}] GET /api/cron/premarket-email: Triggered cron job...`);
-
-  // Secure cron route: check for Vercel Cron header or local secret query param
-  const isVercelCron = 
-    req.headers['x-vercel-cron'] === '1' || 
-    !!req.headers['x-vercel-cron-schedule'] || 
-    (req.headers['user-agent'] && req.headers['user-agent'].includes('vercel-cron'));
-  const isLocalSecret = req.query.secret === 'local';
-
-  if (!isVercelCron && !isLocalSecret) {
-    console.warn(`[${new Date().toISOString()}] Unauthorized cron call attempt. Headers:`, JSON.stringify(req.headers));
-    return res.status(401).json({ error: 'Unauthorized access. Vercel cron headers missing.' });
+  if (currentLine) {
+    lines.push(currentLine);
   }
+  return lines;
+}
 
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const audienceId = process.env.RESEND_AUDIENCE_ID;
+function renderWrappedText(text, x, yStart, lineGap = 32, maxChars = 70) {
+  const lines = wrapText(text, maxChars);
+  return lines.map((line, idx) => {
+    const dy = idx === 0 ? 0 : lineGap;
+    return `<tspan x="${x}" dy="${dy}">${escapeSvgText(line)}</tspan>`;
+  }).join('');
+}
 
-  if (!resendApiKey || !audienceId) {
-    console.error(`[Resend] Missing API keys for cron: API_KEY_SET=${!!resendApiKey}, AUDIENCE_ID_SET=${!!audienceId}`);
-    return res.status(500).json({ error: 'Mailer service is not configured on the backend.' });
-  }
-
-  try {
-    // 1. Fetch indices
-    const indices = await fetchIndicesData();
-
-    // 2. Fetch live news (25 articles)
-    const finnhubToken = process.env.FINNHUB_API_KEY || 'd99jf91r01qssj13hm60d99jf91r01qssj13hm6g';
-    const finnhubUrl = `https://finnhub.io/api/v1/news?category=general&token=${finnhubToken}`;
-
-    console.log(`[${new Date().toISOString()}] Cron: Fetching news from Finnhub...`);
-    const newsResponse = await axios.get(finnhubUrl);
-    let rawArticles = [];
-    if (Array.isArray(newsResponse.data)) {
-      rawArticles = newsResponse.data.slice(0, 25);
-    }
-
-    const cleanArticles = rawArticles.map(item => item.headline || 'No Headline');
-
-    // 3. Construct prompt
-    const userPrompt = `Here are the current global market index levels and recent 25 live news headlines.
-Current Date: ${new Date().toISOString()}
-
-MARKET INDICES DATA:
-- Nifty 50 (^NSEI): Price ${indices.nifty?.price || 'N/A'}, Change: ${indices.nifty?.change || 'N/A'} (${indices.nifty?.pctChange || 'N/A'}%)
-- BSE Sensex (^BSESN): Price ${indices.sensex?.price || 'N/A'}, Change: ${indices.sensex?.change || 'N/A'} (${indices.sensex?.pctChange || 'N/A'}%)
-- S&P 500 (^GSPC): Price ${indices.sp500?.price || 'N/A'}, Change: ${indices.sp500?.change || 'N/A'} (${indices.sp500?.pctChange || 'N/A'}%)
-- Nasdaq Composite (^IXIC): Price ${indices.nasdaq?.price || 'N/A'}, Change: ${indices.nasdaq?.change || 'N/A'} (${indices.nasdaq?.pctChange || 'N/A'}%)
-
-LIVE NEWS HEADLINES:
-${JSON.stringify(cleanArticles, null, 2)}
-
-Filter this news for items impacting the Indian stock market (NSE/BSE) and generate the premarket report slides JSON according to the instructions.`;
-
-    let geminiResponseText = null;
-    let successfulModel = null;
-    const errorsList = [];
-
-    // Fallback loop over models
-    for (let i = 0; i < GEMINI_MODELS.length; i++) {
-      const model = GEMINI_MODELS[i];
-      const modelStartTime = Date.now();
+// Helper to inject CMP (Current Market Price) into stock focus slides
+async function injectCmpToPremarketReport(premarketReport) {
+  if (!premarketReport || !Array.isArray(premarketReport.slides)) return;
+  for (const slide of premarketReport.slides) {
+    if (slide.type === 'stock_impact' && slide.headline) {
       try {
-        console.log(`[${new Date().toISOString()}] [Cron Attempt #${i + 1}/${GEMINI_MODELS.length}] Sending payload to model: "${model}"...`);
-        const response = await ai.models.generateContent({
-          model: model,
-          contents: userPrompt,
-          config: {
-            systemInstruction: PREMARKET_SYSTEM_INSTRUCTION,
-            responseMimeType: 'application/json',
-            responseSchema: PREMARKET_RESPONSE_SCHEMA
-          }
-        });
-
-        if (response && response.text) {
-          geminiResponseText = response.text;
-          successfulModel = model;
-          console.log(`[${new Date().toISOString()}] Cron: SUCCESS with model "${model}" in ${Date.now() - modelStartTime}ms.`);
-          break;
-        } else {
-          errorsList.push({ model, error: 'Empty response text' });
+        const stockData = await fetchRealTimeStockData(slide.headline, 'NSE');
+        if (stockData && stockData.price) {
+          slide.cmp = `₹${stockData.price}`;
         }
-      } catch (error) {
-        console.warn(`[${new Date().toISOString()}] Cron: Model "${model}" FAILED:`, error.message);
-        errorsList.push({ model, error: error.message });
+      } catch (err) {
+        console.error(`Failed to fetch CMP for ${slide.headline}:`, err.message);
       }
     }
+  }
+}
 
-    if (!geminiResponseText) {
-      console.error(`[${new Date().toISOString()}] Cron: FATAL fallback exhaustion.`);
-      throw new Error('All Gemini reasoning models failed to generate cron premarket analysis.');
-    }
-
-    const premarketReport = JSON.parse(geminiResponseText);
-    const dateString = new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' });
-
-    // 4. Fetch all contacts from Resend Audience
-    console.log(`[${new Date().toISOString()}] Cron: Fetching contacts from audience "${audienceId}"...`);
-    const contactsResponse = await axios.get(`https://api.resend.com/audiences/${audienceId}/contacts`, {
-      headers: {
-        'Authorization': `Bearer ${resendApiKey}`
-      },
-      timeout: 10000
-    });
-
-    const allContacts = contactsResponse.data?.data || [];
-    const activeContacts = allContacts.filter(c => !c.unsubscribed).map(c => c.email);
-    console.log(`[${new Date().toISOString()}] Cron: Found ${allContacts.length} contacts total (${activeContacts.length} active/subscribed).`);
-
-    if (activeContacts.length === 0) {
-      console.log(`[${new Date().toISOString()}] Cron: No active subscribers to email. Exiting successfully.`);
-      return res.json({ success: true, message: 'No active subscribers found in the audience list. Mailer broadcast skipped.' });
-    }
-
-    // 5. Generate beautiful HTML Email content (tricolor financial modern template)
-    const host = req.headers.host || 'stock-recommender-app.vercel.app';
-    const readMoreLink = `http://${host}/?page=premarket`;
-
-    const mOverview = premarketReport.marketOverview;
-    const niftyColor = mOverview.niftyChange?.startsWith('-') ? '#ef4444' : '#22c55e';
-    const sensexColor = mOverview.sensexChange?.startsWith('-') ? '#ef4444' : '#22c55e';
-
-    let slidesHtml = '';
-    premarketReport.slides.forEach(slide => {
-      if (slide.type === 'market_overview') {
-        slidesHtml += `
-          <div style="background-color: #0f172a; border-left: 4px solid #fbbf24; border-radius: 8px; padding: 20px; margin-bottom: 25px; color: #f8fafc;">
-            <div style="font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #38bdf8; text-transform: uppercase; margin-bottom: 5px;">${slide.title}</div>
-            <h3 style="font-size: 20px; margin: 0 0 15px 0; font-family: sans-serif; color: #ffffff;">${slide.subtitle}</h3>
-            
-            <div style="background-color: rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #fbbf24; text-align: center; text-transform: uppercase;">
-              Expected Open: ${slide.badge}
-            </div>
-
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase;">🌍 Global cues:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.cues}</p>
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase;">💡 opening strategy:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.details}</p>
-            </div>
-
-            <div>
-              <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase;">🎯 expected range:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.levels}</p>
-            </div>
-          </div>
-        `;
-      } else {
-        const sentimentColor = slide.badge === 'BULLISH' ? '#22c55e' : slide.badge === 'BEARISH' ? '#ef4444' : '#cbd5e1';
-        slidesHtml += `
-          <div style="background-color: #0f172a; border-left: 4px solid ${sentimentColor}; border-radius: 8px; padding: 20px; margin-bottom: 25px; color: #f8fafc;">
-            <div style="font-size: 11px; font-weight: 800; letter-spacing: 1px; color: ${sentimentColor}; text-transform: uppercase; margin-bottom: 5px;">${slide.title}</div>
-            <h3 style="font-size: 18px; margin: 0 0 15px 0; font-family: sans-serif; color: #ffffff;">${slide.subtitle}</h3>
-
-            <div style="background-color: rgba(255,255,255,0.03); border-radius: 6px; padding: 12px; margin-bottom: 15px;">
-              <span style="font-size: 11px; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 4px;">expected sentiment:</span>
-              <strong style="font-size: 16px; color: ${sentimentColor};">${slide.badge} (${slide.headline})</strong>
-            </div>
-
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; text-transform: uppercase;">📰 news catalyst:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #f8fafc;">${slide.cues}</p>
-            </div>
-
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; text-transform: uppercase;">🔍 impact analysis:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.details}</p>
-            </div>
-
-            <div>
-              <strong style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; text-transform: uppercase;">⚡ levels to watch:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #60a5fa;">${slide.levels}</p>
-            </div>
-          </div>
-        `;
-      }
-    });
-
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>India NSE/BSE Premarket Report</title>
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-          <!-- Header Banner -->
-          <div style="background: linear-gradient(135deg, #071115 0%, #0d1e26 100%); padding: 30px 25px; text-align: center; border-bottom: 3px solid #fbbf24;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; font-family: sans-serif; letter-spacing: -0.5px;">🇮🇳 NSE/BSE Premarket Report</h1>
-            <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">Daily market opening briefs and volatility analysis</p>
-            <div style="display: inline-block; background-color: rgba(255,255,255,0.06); border-radius: 20px; padding: 4px 15px; margin-top: 15px; font-size: 12px; font-weight: 600; color: #38bdf8;">
-              ${dateString} (Morning Brief)
-            </div>
-          </div>
-
-          <!-- Content Body -->
-          <div style="padding: 25px;">
-            <!-- Index Prices overview -->
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
-              <h4 style="margin: 0 0 10px 0; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Current Market Levels</h4>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a;">Nifty 50:</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 14px; font-weight: 700; color: #0f172a;">₹${mOverview.niftyCurrent}</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 13px; font-weight: bold; color: ${niftyColor};">${mOverview.niftyChange} (${mOverview.niftyChangePercent})</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a; border-top: 1px solid #f1f5f9;">Sensex:</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 14px; font-weight: 700; color: #0f172a; border-top: 1px solid #f1f5f9;">₹${mOverview.sensexCurrent}</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 13px; font-weight: bold; color: ${sensexColor}; border-top: 1px solid #f1f5f9;">${mOverview.sensexChange} (${mOverview.sensexChangePercent})</td>
-                </tr>
-              </table>
-            </div>
-
-            <!-- Report Slides -->
-            <div>
-              ${slidesHtml}
-            </div>
-
-            <!-- Call to Action -->
-            <div style="text-align: center; margin: 35px 0 20px 0;">
-              <a href="${readMoreLink}" style="display: inline-block; background-color: #0f172a; color: #ffffff; padding: 14px 30px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(15,23,42,0.15);">
-                📊 Read More Analysis & View Slides
-              </a>
-              <p style="font-size: 11px; color: #64748b; margin-top: 12px;">Click to view interactive charts, full fundamental research and download report slides as Instagram images.</p>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div style="background-color: #f8fafc; padding: 25px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; line-height: 1.6;">
-            <strong style="color: #475569; display: block; margin-bottom: 5px;">LEGAL DISCLAIMER:</strong>
-            ${premarketReport.disclaimer}
-            <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center;">
-              <p style="margin: 0;">&copy; 2026 Fundamental News Stocks Analyser. All rights reserved.</p>
-              <p style="margin: 5px 0 0 0;">You received this email because you subscribed to daily premarket briefs on our application.</p>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
+// 1080x1350 Instagram Portrait Slide SVG Template Generator
+function renderSlideToSvg(slide, marketOverview, totalSlides) {
+  const isMarketOverview = slide.type === 'market_overview';
+  
+  const title = escapeSvgText(slide.title);
+  const subtitle = escapeSvgText(slide.subtitle);
+  const headline = escapeSvgText(slide.headline);
+  const badge = slide.badge || '';
+  const cues = slide.cues || '';
+  const details = slide.details || '';
+  const levels = slide.levels || '';
+  
+  const badgeUpper = badge.toUpperCase();
+  let badgeBg = 'rgba(148, 163, 184, 0.15)';
+  let badgeStroke = 'rgba(203, 213, 225, 0.25)';
+  let badgeColor = '#cbd5e1';
+  
+  if (badgeUpper.includes('UP') || badgeUpper.includes('BULLISH')) {
+    badgeBg = 'rgba(34, 197, 94, 0.15)';
+    badgeStroke = 'rgba(74, 222, 128, 0.25)';
+    badgeColor = '#4ade80';
+  } else if (badgeUpper.includes('DOWN') || badgeUpper.includes('BEARISH')) {
+    badgeBg = 'rgba(239, 68, 68, 0.15)';
+    badgeStroke = 'rgba(248, 113, 113, 0.25)';
+    badgeColor = '#f87171';
+  }
+  
+  const badgeText = isMarketOverview ? `EXPECTED OPEN: ${badge}` : `SENTIMENT: ${badge}`;
+  const headlineWithCmp = isMarketOverview ? headline : `${headline}${slide.cmp ? `  •  CMP: ${slide.cmp}` : ''}`;
+  
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+    <defs>
+      <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#071115" />
+        <stop offset="50%" stop-color="#0d1e26" />
+        <stop offset="100%" stop-color="#04080a" />
+      </linearGradient>
+      <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap');
+        .main-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 64px; fill: #ffffff; letter-spacing: -0.01em; }
+        .sub-title { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 34px; fill: #94a3b8; }
+        .badge-text { font-family: 'Outfit', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: 0.05em; text-transform: uppercase; text-anchor: middle; }
+        .card-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: 0.02em; }
+        .card-body { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; font-size: 26px; fill: #cbd5e1; }
+      </style>
+    </defs>
+    <rect width="1080" height="1350" fill="url(#bg-gradient)" />
+    <text x="540" y="675" fill="none" stroke="rgba(255, 255, 255, 0.015)" stroke-width="3" font-size="120" font-family="'Outfit', sans-serif" font-weight="900" text-anchor="middle" transform="rotate(-15, 540, 675)">INDIA NSE</text>
+    <text x="70" y="120" class="main-title">${subtitle}</text>
+    <text x="70" y="175" class="sub-title">${escapeSvgText(headlineWithCmp)}</text>
+    <rect x="70" y="210" width="450" height="55" rx="8" fill="${badgeBg}" stroke="${badgeStroke}" stroke-width="1.5" />
+    <text x="295" y="247" fill="${badgeColor}" class="badge-text">${escapeSvgText(badgeText)}</text>
+  `;
+  
+  if (isMarketOverview) {
+    const niftyCurrent = escapeSvgText(marketOverview.niftyCurrent || 'N/A');
+    const niftyChange = escapeSvgText(marketOverview.niftyChange || 'N/A');
+    const niftyChangePercent = escapeSvgText(marketOverview.niftyChangePercent || 'N/A');
+    const niftyUp = !niftyChange.startsWith('-');
+    const niftyColor = niftyUp ? '#4ade80' : '#f87171';
+    
+    const sensexCurrent = escapeSvgText(marketOverview.sensexCurrent || 'N/A');
+    const sensexChange = escapeSvgText(marketOverview.sensexChange || 'N/A');
+    const sensexChangePercent = escapeSvgText(marketOverview.sensexChangePercent || 'N/A');
+    const sensexUp = !sensexChange.startsWith('-');
+    const sensexColor = sensexUp ? '#4ade80' : '#f87171';
+    
+    svg += `
+    <rect x="70" y="290" width="455" height="150" rx="12" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1.5" />
+    <rect x="70" y="290" width="6" height="150" fill="${niftyColor}" rx="3" />
+    <text x="100" y="330" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="20px" fill="#94a3b8">NIFTY 50</text>
+    <text x="100" y="380" font-family="'Outfit', sans-serif" font-weight="800" font-size="32px" fill="#ffffff">₹${niftyCurrent}</text>
+    <text x="100" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="22px" fill="${niftyColor}">${niftyChange} (${niftyChangePercent})</text>
+    
+    <rect x="555" y="290" width="455" height="150" rx="12" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1.5" />
+    <rect x="555" y="290" width="6" height="150" fill="${sensexColor}" rx="3" />
+    <text x="585" y="330" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="20px" fill="#94a3b8">SENSEX</text>
+    <text x="585" y="380" font-family="'Outfit', sans-serif" font-weight="800" font-size="32px" fill="#ffffff">₹${sensexCurrent}</text>
+    <text x="585" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="22px" fill="${sensexColor}">${sensexChange} (${sensexChangePercent})</text>
+    
+    <rect x="70" y="460" width="940" height="230" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <text x="100" y="510" fill="#fbbf24" class="card-title">🌍 Global Market Cues</text>
+    <text x="100" y="555" class="card-body">
+      ${renderWrappedText(cues, 100, 555, 36, 60)}
+    </text>
+    
+    <rect x="70" y="710" width="940" height="250" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <text x="100" y="760" fill="#fbbf24" class="card-title">💡 Why This Opening Strategy?</text>
+    <text x="100" y="805" class="card-body">
+      ${renderWrappedText(details, 100, 805, 36, 60)}
+    </text>
+    
+    <rect x="70" y="980" width="940" height="220" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <text x="100" y="1030" fill="#fbbf24" class="card-title">🎯 Target Range &amp; Possibilities</text>
+    <text x="100" y="1075" class="card-body">
+      ${renderWrappedText(levels, 100, 1075, 36, 60)}
+    </text>
     `;
-
-    // 6. Broadcast via Resend: Send directly to each subscriber (essential for Sandbox/onboarding@resend.dev accounts)
-    console.log(`[${new Date().toISOString()}] Cron: Preparing Resend broadcast to ${activeContacts.length} subscribers...`);
-
-    const sendPromises = activeContacts.map(email => {
-      const payload = {
-        from: process.env.FROM_EMAIL || 'Premarket Report <onboarding@resend.dev>',
-        to: email,
-        subject: `🇮🇳 India NSE/BSE Premarket Report - ${dateString}`,
-        html: emailHtml
-      };
-
-      return axios.post('https://api.resend.com/emails', payload, {
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }).then(res => ({ success: true, email, status: res.status }))
-        .catch(err => {
-          console.error(`[Resend] Direct send failed for ${email}:`, err.response?.data || err.message);
-          return { success: false, email, error: err.response?.data?.message || err.message };
-        });
-    });
-
-    const results = await Promise.all(sendPromises);
-    const successCount = results.filter(r => r.success).length;
-    const failureCount = results.filter(r => !r.success).length;
-
-    console.log(`[${new Date().toISOString()}] Cron: Broadcast completed. Dispatched: ${successCount} successfully, ${failureCount} failed.`);
-
-    return res.json({
-      success: true,
-      message: 'Daily premarket report broadcast complete.',
-      metrics: {
-        totalSubscribers: activeContacts.length,
-        dispatchedSuccess: successCount,
-        dispatchedFailed: failureCount,
-        batchesCount: results.length
-      },
-      modelUsed: successfulModel
-    });
-
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] Cron Fatal Error:`, error);
-    return res.status(500).json({
-      error: 'An internal error occurred during cron premarket broadcast.',
-      message: error.message
-    });
-  }
-});
-
-// Endpoint: Manual endpoint to trigger a single test email for debugging
-app.get('/api/test/premarket-email', async (req, res) => {
-  const startTime = Date.now();
-  const testReceiver = (req.query.to || '').toString().trim().toLowerCase();
-  console.log(`[${new Date().toISOString()}] GET /api/test/premarket-email: Sending report directly to: "${testReceiver}"`);
-
-  if (!testReceiver || !testReceiver.includes('@')) {
-    return res.status(400).json({ error: 'A valid query parameter "to" is required, e.g., /api/test/premarket-email?to=user@example.com' });
-  }
-
-  const resendApiKey = process.env.RESEND_API_KEY;
-  if (!resendApiKey) {
-    console.error('[Resend] Missing API key for manual test trigger.');
-    return res.status(500).json({ error: 'Mailer API key is not configured in backend env.' });
-  }
-
-  try {
-    // 1. Fetch indices
-    const indices = await fetchIndicesData();
-
-    // 2. Fetch live news (25 articles)
-    const finnhubToken = process.env.FINNHUB_API_KEY || 'd99jf91r01qssj13hm60d99jf91r01qssj13hm6g';
-    const finnhubUrl = `https://finnhub.io/api/v1/news?category=general&token=${finnhubToken}`;
-
-    console.log(`[${new Date().toISOString()}] Test Mailer: Fetching news from Finnhub...`);
-    const newsResponse = await axios.get(finnhubUrl);
-    let rawArticles = [];
-    if (Array.isArray(newsResponse.data)) {
-      rawArticles = newsResponse.data.slice(0, 25);
-    }
-
-    const cleanArticles = rawArticles.map(item => item.headline || 'No Headline');
-
-    // 3. Construct prompt
-    const userPrompt = `Here are the current global market index levels and recent 25 live news headlines.
-Current Date: ${new Date().toISOString()}
-
-MARKET INDICES DATA:
-- Nifty 50 (^NSEI): Price ${indices.nifty?.price || 'N/A'}, Change: ${indices.nifty?.change || 'N/A'} (${indices.nifty?.pctChange || 'N/A'}%)
-- BSE Sensex (^BSESN): Price ${indices.sensex?.price || 'N/A'}, Change: ${indices.sensex?.change || 'N/A'} (${indices.sensex?.pctChange || 'N/A'}%)
-- S&P 500 (^GSPC): Price ${indices.sp500?.price || 'N/A'}, Change: ${indices.sp500?.change || 'N/A'} (${indices.sp500?.pctChange || 'N/A'}%)
-- Nasdaq Composite (^IXIC): Price ${indices.nasdaq?.price || 'N/A'}, Change: ${indices.nasdaq?.change || 'N/A'} (${indices.nasdaq?.pctChange || 'N/A'}%)
-
-LIVE NEWS HEADLINES:
-${JSON.stringify(cleanArticles, null, 2)}
-
-Filter this news for items impacting the Indian stock market (NSE/BSE) and generate the premarket report slides JSON according to the instructions.`;
-
-    let geminiResponseText = null;
-    let successfulModel = null;
-    const errorsList = [];
-
-    // Fallback loop over models
-    for (let i = 0; i < GEMINI_MODELS.length; i++) {
-      const model = GEMINI_MODELS[i];
-      const modelStartTime = Date.now();
-      try {
-        console.log(`[${new Date().toISOString()}] [Test Mailer Attempt #${i + 1}/${GEMINI_MODELS.length}] Sending payload to model: "${model}"...`);
-        const response = await ai.models.generateContent({
-          model: model,
-          contents: userPrompt,
-          config: {
-            systemInstruction: PREMARKET_SYSTEM_INSTRUCTION,
-            responseMimeType: 'application/json',
-            responseSchema: PREMARKET_RESPONSE_SCHEMA
-          }
-        });
-
-        if (response && response.text) {
-          geminiResponseText = response.text;
-          successfulModel = model;
-          console.log(`[${new Date().toISOString()}] Test Mailer: SUCCESS with model "${model}" in ${Date.now() - modelStartTime}ms.`);
-          break;
-        } else {
-          errorsList.push({ model, error: 'Empty response text' });
-        }
-      } catch (error) {
-        console.warn(`[${new Date().toISOString()}] Test Mailer: Model "${model}" FAILED:`, error.message);
-        errorsList.push({ model, error: error.message });
-      }
-    }
-
-    if (!geminiResponseText) {
-      console.error(`[${new Date().toISOString()}] Test Mailer: FATAL fallback exhaustion.`);
-      throw new Error('All Gemini reasoning models failed to generate test premarket analysis.');
-    }
-
-    const premarketReport = JSON.parse(geminiResponseText);
-    const dateString = new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' });
-
-    // 4. Generate beautiful HTML Email content (tricolor financial modern template)
-    const host = req.headers.host || 'whats-up-stocks.vercel.app';
-    const readMoreLink = `http://${host}/?page=premarket`;
-
-    const mOverview = premarketReport.marketOverview;
-    const niftyColor = mOverview.niftyChange?.startsWith('-') ? '#ef4444' : '#22c55e';
-    const sensexColor = mOverview.sensexChange?.startsWith('-') ? '#ef4444' : '#22c55e';
-
-    let slidesHtml = '';
-    premarketReport.slides.forEach(slide => {
-      if (slide.type === 'market_overview') {
-        slidesHtml += `
-          <div style="background-color: #0f172a; border-left: 4px solid #fbbf24; border-radius: 8px; padding: 20px; margin-bottom: 25px; color: #f8fafc;">
-            <div style="font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #38bdf8; text-transform: uppercase; margin-bottom: 5px;">${slide.title}</div>
-            <h3 style="font-size: 20px; margin: 0 0 15px 0; font-family: sans-serif; color: #ffffff;">${slide.subtitle}</h3>
-            
-            <div style="background-color: rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #fbbf24; text-align: center; text-transform: uppercase;">
-              Expected Open: ${slide.badge}
-            </div>
-
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase;">🌍 Global cues:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.cues}</p>
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase;">💡 opening strategy:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.details}</p>
-            </div>
-
-            <div>
-              <strong style="color: #fbbf24; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase;">🎯 expected range:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.levels}</p>
-            </div>
-          </div>
-        `;
-      } else {
-        const sentimentColor = slide.badge === 'BULLISH' ? '#22c55e' : slide.badge === 'BEARISH' ? '#ef4444' : '#cbd5e1';
-        slidesHtml += `
-          <div style="background-color: #0f172a; border-left: 4px solid ${sentimentColor}; border-radius: 8px; padding: 20px; margin-bottom: 25px; color: #f8fafc;">
-            <div style="font-size: 11px; font-weight: 800; letter-spacing: 1px; color: ${sentimentColor}; text-transform: uppercase; margin-bottom: 5px;">${slide.title}</div>
-            <h3 style="font-size: 18px; margin: 0 0 15px 0; font-family: sans-serif; color: #ffffff;">${slide.subtitle}</h3>
-
-            <div style="background-color: rgba(255,255,255,0.03); border-radius: 6px; padding: 12px; margin-bottom: 15px;">
-              <span style="font-size: 11px; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 4px;">expected sentiment:</span>
-              <strong style="font-size: 16px; color: ${sentimentColor};">${slide.badge} (${slide.headline})</strong>
-            </div>
-
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; text-transform: uppercase;">📰 news catalyst:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #f8fafc;">${slide.cues}</p>
-            </div>
-
-            <div style="margin-bottom: 15px;">
-              <strong style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; text-transform: uppercase;">🔍 impact analysis:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #cbd5e1;">${slide.details}</p>
-            </div>
-
-            <div>
-              <strong style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; text-transform: uppercase;">⚡ levels to watch:</strong>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #60a5fa;">${slide.levels}</p>
-            </div>
-          </div>
-        `;
-      }
-    });
-
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>India NSE/BSE Premarket Report</title>
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-          <!-- Header Banner -->
-          <div style="background: linear-gradient(135deg, #071115 0%, #0d1e26 100%); padding: 30px 25px; text-align: center; border-bottom: 3px solid #fbbf24;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; font-family: sans-serif; letter-spacing: -0.5px;">🇮🇳 Test: NSE/BSE Premarket Brief</h1>
-            <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">Daily market opening briefs and volatility analysis</p>
-            <div style="display: inline-block; background-color: rgba(255,255,255,0.06); border-radius: 20px; padding: 4px 15px; margin-top: 15px; font-size: 12px; font-weight: 600; color: #38bdf8;">
-              ${dateString} (Manual Test Email)
-            </div>
-          </div>
-
-          <!-- Content Body -->
-          <div style="padding: 25px;">
-            <!-- Index Prices overview -->
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
-              <h4 style="margin: 0 0 10px 0; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Current Market Levels</h4>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a;">Nifty 50:</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 14px; font-weight: 700; color: #0f172a;">₹${mOverview.niftyCurrent}</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 13px; font-weight: bold; color: ${niftyColor};">${mOverview.niftyChange} (${mOverview.niftyChangePercent})</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; font-size: 14px; font-weight: 600; color: #0f172a; border-top: 1px solid #f1f5f9;">Sensex:</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 14px; font-weight: 700; color: #0f172a; border-top: 1px solid #f1f5f9;">₹${mOverview.sensexCurrent}</td>
-                  <td style="text-align: right; padding: 6px 0; font-size: 13px; font-weight: bold; color: ${sensexColor}; border-top: 1px solid #f1f5f9;">${mOverview.sensexChange} (${mOverview.sensexChangePercent})</td>
-                </tr>
-              </table>
-            </div>
-
-            <!-- Report Slides -->
-            <div>
-              ${slidesHtml}
-            </div>
-
-            <!-- Call to Action -->
-            <div style="text-align: center; margin: 35px 0 20px 0;">
-              <a href="${readMoreLink}" style="display: inline-block; background-color: #0f172a; color: #ffffff; padding: 14px 30px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(15,23,42,0.15);">
-                📊 Read More Analysis & View Slides
-              </a>
-              <p style="font-size: 11px; color: #64748b; margin-top: 12px;">Click to view interactive charts, full fundamental research and download report slides as Instagram images.</p>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div style="background-color: #f8fafc; padding: 25px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; line-height: 1.6;">
-            <strong style="color: #475569; display: block; margin-bottom: 5px;">LEGAL DISCLAIMER:</strong>
-            ${premarketReport.disclaimer}
-            <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center;">
-              <p style="margin: 0;">&copy; 2026 Fundamental News Stocks Analyser. All rights reserved.</p>
-              <p style="margin: 5px 0 0 0;">This email is a manual test dispatch triggered for developers.</p>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
+  } else {
+    const sentimentColor = badgeColor;
+    
+    svg += `
+    <rect x="70" y="290" width="940" height="270" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <text x="100" y="340" fill="${sentimentColor}" class="card-title">📰 Catalyst Trigger News</text>
+    <text x="100" y="385" class="card-body">
+      ${renderWrappedText(cues, 100, 385, 36, 60)}
+    </text>
+    
+    <rect x="70" y="580" width="940" height="300" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <text x="100" y="630" fill="${sentimentColor}" class="card-title">🔍 Market Impact Analysis</text>
+    <text x="100" y="675" class="card-body">
+      ${renderWrappedText(details, 100, 675, 36, 60)}
+    </text>
+    
+    <rect x="70" y="900" width="940" height="240" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <text x="100" y="950" fill="#60a5fa" class="card-title">⚡ Key Levels to Watch</text>
+    <text x="100" y="995" class="card-body">
+      ${renderWrappedText(levels, 100, 995, 36, 60)}
+    </text>
     `;
-
-    // 5. Send to the specified recipient directly
-    console.log(`[${new Date().toISOString()}] Test Mailer: Dispatching direct email to "${testReceiver}" via Resend...`);
-    const payload = {
-      from: 'Premarket Report <onboarding@resend.dev>',
-      to: testReceiver,
-      subject: `🇮🇳 Test: India NSE/BSE Premarket Brief - ${dateString}`,
-      html: emailHtml
-    };
-
-    const sendRes = await axios.post('https://api.resend.com/emails', payload, {
-      headers: {
-        'Authorization': `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
-    });
-
-    console.log(`[${new Date().toISOString()}] Test Mailer: Email successfully sent to ${testReceiver}. Status: ${sendRes.status}`);
-
-    return res.json({
-      success: true,
-      message: `Manual test premarket email sent successfully to ${testReceiver}.`,
-      resendEmailId: sendRes.data?.id,
-      modelUsed: successfulModel,
-      timeTakenMs: Date.now() - startTime
-    });
-
-  } catch (error) {
-    if (error.response) {
-      console.error(`[Resend] Direct send failed (Status: ${error.response.status}):`, JSON.stringify(error.response.data));
-      return res.status(error.response.status).json({
-        error: 'Failed to send test email through Resend API.',
-        resendDetails: error.response.data
-      });
-    }
-    console.error(`[${new Date().toISOString()}] Test Mailer Error:`, error.message);
-    return res.status(500).json({
-      error: 'An internal error occurred during direct premarket email send.',
-      message: error.message
-    });
   }
-});
+  
+  svg += `</svg>`;
+  return svg;
+}
 
+// Convert SVG string to PNG Buffer via sharp
+async function convertSvgToPngBuffer(svgString) {
+  return await sharp(Buffer.from(svgString))
+    .png()
+    .toBuffer();
+}
 
-// -------------------------------------------------------------
-// Instagram Carousel Sharing Endpoint
-// -------------------------------------------------------------
-app.post('/api/instagram/share', async (req, res) => {
-  const startTime = Date.now();
-  console.log(`[${new Date().toISOString()}] Instagram Share: Starting sharing flow...`);
+// Common Instagram Publishing Helper
+async function publishCarouselToInstagram(images, caption) {
+  const igUserId = process.env.IG_USER_ID;
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  
+  if (!igUserId || !accessToken) {
+    throw new Error('Instagram credentials (IG_USER_ID or META_ACCESS_TOKEN) are not configured on the server.');
+  }
+  if (!blobToken) {
+    throw new Error('Vercel Blob storage token (BLOB_READ_WRITE_TOKEN) is missing. Please connect Vercel Blob.');
+  }
+  
+  console.log(`[${new Date().toISOString()}] Instagram Publisher: Uploading ${images.length} images to Vercel Blob...`);
+  
+  const uploadPromises = images.map(async (base64Str, index) => {
+    const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      throw new Error(`Invalid base64 string format at index ${index}`);
+    }
+    
+    const buffer = Buffer.from(matches[2], 'base64');
+    const contentType = matches[1];
+    const extension = contentType.split('/')[1] || 'png';
+    const filename = `premarket-slide-${Date.now()}-${index}.${extension}`;
+    
+    const blob = await put(filename, buffer, {
+      access: 'public',
+      contentType: contentType,
+      token: blobToken
+    });
+    
+    return blob.url;
+  });
+  
+  const imageUrls = await Promise.all(uploadPromises);
+  console.log(`[${new Date().toISOString()}] Instagram Publisher: Successfully uploaded all images. URLs:`, imageUrls);
   
   try {
-    const { images, caption } = req.body;
-    
-    if (!images || !Array.isArray(images) || images.length < 2 || images.length > 10) {
-      return res.status(400).json({ error: 'Instagram carousel requires between 2 and 10 images.' });
-    }
-    
-    const igUserId = process.env.IG_USER_ID;
-    const accessToken = process.env.META_ACCESS_TOKEN;
-    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-    
-    if (!igUserId || !accessToken) {
-      return res.status(500).json({ error: 'Instagram credentials (IG_USER_ID or META_ACCESS_TOKEN) are not configured on the server.' });
-    }
-    
-    if (!blobToken) {
-      return res.status(500).json({ error: 'Vercel Blob storage token (BLOB_READ_WRITE_TOKEN) is missing. Please connect Vercel Blob.' });
-    }
-    
-    const adminSecret = process.env.ADMIN_SECRET;
-    const clientSecret = req.headers['x-admin-secret'];
-    
-    if (!adminSecret) {
-      return res.status(500).json({ error: 'Server configuration error: ADMIN_SECRET is not set in environment.' });
-    }
-    if (clientSecret !== adminSecret) {
-      console.warn(`[${new Date().toISOString()}] Unauthorized attempt to post to Instagram. Invalid key.`);
-      return res.status(401).json({ error: 'Unauthorized: Invalid admin secret key.' });
-    }
-
-    
-    // 1. Upload base64 images to Vercel Blob in parallel
-    console.log(`[${new Date().toISOString()}] Instagram Share: Uploading ${images.length} images to Vercel Blob...`);
-    const uploadPromises = images.map(async (base64Str, index) => {
-      const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-      if (!matches || matches.length !== 3) {
-        throw new Error(`Invalid base64 string format at index ${index}`);
-      }
-      
-      const buffer = Buffer.from(matches[2], 'base64');
-      const contentType = matches[1];
-      const extension = contentType.split('/')[1] || 'png';
-      const filename = `premarket-slide-${Date.now()}-${index}.${extension}`;
-      
-      const blob = await put(filename, buffer, {
-        access: 'public',
-        contentType: contentType,
-        token: blobToken
-      });
-
-      
-      return blob.url;
-    });
-    
-    const imageUrls = await Promise.all(uploadPromises);
-    console.log(`[${new Date().toISOString()}] Instagram Share: Successfully uploaded all images. URLs:`, imageUrls);
-    
-    // 2. Create Instagram media container for each image in parallel
-    console.log(`[${new Date().toISOString()}] Instagram Share: Creating individual media containers...`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Creating individual media containers...`);
     const containerPromises = imageUrls.map(async (url, index) => {
       const mediaContainerUrl = `https://graph.facebook.com/v20.0/${igUserId}/media`;
       const response = await axios.post(mediaContainerUrl, null, {
@@ -1707,10 +1256,9 @@ app.post('/api/instagram/share', async (req, res) => {
     });
     
     const containerIds = await Promise.all(containerPromises);
-    console.log(`[${new Date().toISOString()}] Instagram Share: Container IDs created:`, containerIds);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Container IDs created:`, containerIds);
     
-    // 3. Poll each container status until they are all FINISHED in parallel
-    console.log(`[${new Date().toISOString()}] Instagram Share: Waiting for containers to process...`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Waiting for containers to process...`);
     const checkContainerStatus = async (id) => {
       const checkUrl = `https://graph.facebook.com/v20.0/${id}`;
       let attempts = 0;
@@ -1732,7 +1280,6 @@ app.post('/api/instagram/share', async (req, res) => {
           throw new Error(`Container ${id} failed processing with status ERROR`);
         }
         
-        // Wait 1.5s before polling again
         await new Promise(r => setTimeout(r, 1500));
         attempts++;
       }
@@ -1740,10 +1287,9 @@ app.post('/api/instagram/share', async (req, res) => {
     };
     
     await Promise.all(containerIds.map(id => checkContainerStatus(id)));
-    console.log(`[${new Date().toISOString()}] Instagram Share: All media containers are FINISHED.`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: All media containers are FINISHED.`);
     
-    // 4. Create the carousel container
-    console.log(`[${new Date().toISOString()}] Instagram Share: Creating parent CAROUSEL container...`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Creating parent CAROUSEL container...`);
     const carouselCreateUrl = `https://graph.facebook.com/v20.0/${igUserId}/media`;
     const carouselResponse = await axios.post(carouselCreateUrl, null, {
       params: {
@@ -1755,13 +1301,11 @@ app.post('/api/instagram/share', async (req, res) => {
     });
     
     const carouselContainerId = carouselResponse.data.id;
-    console.log(`[${new Date().toISOString()}] Instagram Share: Parent carousel container ID: ${carouselContainerId}`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Parent carousel container ID: ${carouselContainerId}`);
     
-    // Wait briefly to allow Facebook's DB to settle
     await new Promise(r => setTimeout(r, 2000));
     
-    // 5. Publish the carousel container
-    console.log(`[${new Date().toISOString()}] Instagram Share: Publishing post...`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Publishing post...`);
     const publishUrl = `https://graph.facebook.com/v20.0/${igUserId}/media_publish`;
     const publishResponse = await axios.post(publishUrl, null, {
       params: {
@@ -1771,14 +1315,227 @@ app.post('/api/instagram/share', async (req, res) => {
     });
     
     const mediaId = publishResponse.data.id;
-    console.log(`[${new Date().toISOString()}] Instagram Share: Post published successfully! Media ID: ${mediaId}`);
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Post published successfully! Media ID: ${mediaId}`);
     
-    // 6. Clean up Vercel Blob in the background (non-blocking)
     imageUrls.forEach(url => {
       del(url, { token: blobToken }).catch(err => {
-        console.error(`[${new Date().toISOString()}] Instagram Share: Cleanup failed for ${url}:`, err.message);
+        console.error(`[${new Date().toISOString()}] Instagram Publisher: Cleanup failed for ${url}:`, err.message);
       });
     });
+    
+    return mediaId;
+  } catch (error) {
+    imageUrls.forEach(url => {
+      del(url, { token: blobToken }).catch(err => {
+        console.error(`[${new Date().toISOString()}] Instagram Publisher: Cleanup failed for ${url}:`, err.message);
+      });
+    });
+    throw error;
+  }
+}
+
+// Helper to compile and run premarket Instagram share logic
+async function runPremarketInstagramPostFlow() {
+  // 1. Fetch indices
+  const indices = await fetchIndicesData();
+
+  // 2. Fetch live news (25 articles)
+  const finnhubToken = process.env.FINNHUB_API_KEY || 'd99jf91r01qssj13hm60d99jf91r01qssj13hm6g';
+  const finnhubUrl = `https://finnhub.io/api/v1/news?category=general&token=${finnhubToken}`;
+
+  console.log(`[${new Date().toISOString()}] Flow: Fetching news from Finnhub...`);
+  const newsResponse = await axios.get(finnhubUrl);
+  let rawArticles = [];
+  if (Array.isArray(newsResponse.data)) {
+    rawArticles = newsResponse.data.slice(0, 25);
+  }
+
+  const cleanArticles = rawArticles.map(item => item.headline || 'No Headline');
+
+  // 3. Construct prompt
+  const userPrompt = `Here are the current global market index levels and recent 25 live news headlines.
+Current Date: ${new Date().toISOString()}
+
+MARKET INDICES DATA:
+- Nifty 50 (^NSEI): Price ${indices.nifty?.price || 'N/A'}, Change: ${indices.nifty?.change || 'N/A'} (${indices.nifty?.pctChange || 'N/A'}%)
+- BSE Sensex (^BSESN): Price ${indices.sensex?.price || 'N/A'}, Change: ${indices.sensex?.change || 'N/A'} (${indices.sensex?.pctChange || 'N/A'}%)
+- S&P 500 (^GSPC): Price ${indices.sp500?.price || 'N/A'}, Change: ${indices.sp500?.change || 'N/A'} (${indices.sp500?.pctChange || 'N/A'}%)
+- Nasdaq Composite (^IXIC): Price ${indices.nasdaq?.price || 'N/A'}, Change: ${indices.nasdaq?.change || 'N/A'} (${indices.nasdaq?.pctChange || 'N/A'}%)
+
+LIVE NEWS HEADLINES:
+${JSON.stringify(cleanArticles, null, 2)}
+
+Filter this news for items impacting the Indian stock market (NSE/BSE) and generate the premarket report slides JSON according to the instructions.`;
+
+  let geminiResponseText = null;
+  let successfulModel = null;
+  const errorsList = [];
+
+  for (let i = 0; i < GEMINI_MODELS.length; i++) {
+    const model = GEMINI_MODELS[i];
+    const modelStartTime = Date.now();
+    try {
+      console.log(`[${new Date().toISOString()}] [Flow Attempt #${i + 1}/${GEMINI_MODELS.length}] Sending payload to model: "${model}"...`);
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: userPrompt,
+        config: {
+          systemInstruction: PREMARKET_SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: PREMARKET_RESPONSE_SCHEMA
+        }
+      });
+
+      if (response && response.text) {
+        geminiResponseText = response.text;
+        successfulModel = model;
+        console.log(`[${new Date().toISOString()}] Flow: SUCCESS with model "${model}" in ${Date.now() - modelStartTime}ms.`);
+        break;
+      } else {
+        errorsList.push({ model, error: 'Empty response text' });
+      }
+    } catch (error) {
+      console.warn(`[${new Date().toISOString()}] Flow: Model "${model}" FAILED:`, error.message);
+      errorsList.push({ model, error: error.message });
+    }
+  }
+
+  if (!geminiResponseText) {
+    console.error(`[${new Date().toISOString()}] Flow: FATAL fallback exhaustion.`);
+    throw new Error('All Gemini reasoning models failed to generate premarket analysis.');
+  }
+
+  const premarketReport = JSON.parse(geminiResponseText);
+  await injectCmpToPremarketReport(premarketReport);
+  const dateStr = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  // 4. Generate SVG templates and convert to PNG base64 strings in parallel/series
+  console.log(`[${new Date().toISOString()}] Flow: Rendering ${premarketReport.slides.length} slides to SVG and PNG...`);
+  const base64Images = [];
+  
+  for (let i = 0; i < premarketReport.slides.length; i++) {
+    const slide = premarketReport.slides[i];
+    const svg = renderSlideToSvg(slide, premarketReport.marketOverview, premarketReport.slides.length);
+    const pngBuffer = await convertSvgToPngBuffer(svg);
+    const base64Str = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+    base64Images.push(base64Str);
+  }
+
+  // 5. Construct caption
+  const caption = `🇮🇳 Premarket Report - ${dateStr}\n\n` +
+    `Here is the market outlook and key stock updates for today. Swipe left to see details for Nifty levels and stock setups.\n\n` +
+    `#PremarketReport #IndianStockMarket #Nifty50 #Sensex #NSE #BSE #StockMarketIndia #Trading #Investing #MarketAnalysis #StockAnalysis`;
+
+  // 6. Share to Instagram
+  console.log(`[${new Date().toISOString()}] Flow: Sharing carousel with ${base64Images.length} images to Instagram...`);
+  const mediaId = await publishCarouselToInstagram(base64Images, caption);
+  
+  return {
+    mediaId,
+    slidesCount: base64Images.length,
+    modelUsed: successfulModel
+  };
+}
+
+// Endpoint: Cron Job to generate and post premarket report directly to Instagram
+app.get('/api/cron/premarket-instagram', async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] GET /api/cron/premarket-instagram: Triggered cron job...`);
+
+  // Secure cron route check
+  const isVercelCron = 
+    req.headers['x-vercel-cron'] === '1' || 
+    !!req.headers['x-vercel-cron-schedule'] || 
+    (req.headers['user-agent'] && req.headers['user-agent'].includes('vercel-cron'));
+  const isLocalSecret = req.query.secret === 'local';
+
+  if (!isVercelCron && !isLocalSecret) {
+    console.warn(`[${new Date().toISOString()}] Unauthorized cron call attempt.`);
+    return res.status(401).json({ error: 'Unauthorized access. Vercel cron headers missing.' });
+  }
+
+  try {
+    const result = await runPremarketInstagramPostFlow();
+    return res.json({
+      success: true,
+      message: 'Daily premarket report successfully posted to Instagram.',
+      mediaId: result.mediaId,
+      slidesCount: result.slidesCount,
+      modelUsed: result.modelUsed,
+      timeTakenMs: Date.now() - startTime
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Cron Instagram Posting Fatal Error:`, error);
+    return res.status(500).json({
+      error: 'An internal error occurred during cron premarket Instagram posting.',
+      message: error.message
+    });
+  }
+});
+
+// Endpoint: Test route to manually trigger the Instagram posting pipeline
+app.get('/api/test/premarket-instagram', async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] GET /api/test/premarket-instagram: Triggered test run...`);
+
+  const clientSecret = req.headers['x-admin-secret'] || req.query.secret;
+  const adminSecret = process.env.ADMIN_SECRET || 'local';
+
+  if (clientSecret !== adminSecret && req.query.secret !== 'local') {
+    console.warn(`[${new Date().toISOString()}] Unauthorized test endpoint call.`);
+    return res.status(401).json({ error: 'Unauthorized: Invalid admin secret key.' });
+  }
+
+  try {
+    const result = await runPremarketInstagramPostFlow();
+    return res.json({
+      success: true,
+      message: 'Test premarket report successfully posted to Instagram.',
+      mediaId: result.mediaId,
+      slidesCount: result.slidesCount,
+      modelUsed: result.modelUsed,
+      timeTakenMs: Date.now() - startTime
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Test Instagram Posting Fatal Error:`, error);
+    return res.status(500).json({
+      error: 'An internal error occurred during test premarket Instagram posting.',
+      message: error.message
+    });
+  }
+});
+
+
+// -------------------------------------------------------------
+// Instagram Carousel Sharing Endpoint
+// -------------------------------------------------------------
+app.post('/api/instagram/share', async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] Instagram Share: Starting sharing flow...`);
+  
+  try {
+    const { images, caption } = req.body;
+    
+    if (!images || !Array.isArray(images) || images.length < 2 || images.length > 10) {
+      return res.status(400).json({ error: 'Instagram carousel requires between 2 and 10 images.' });
+    }
+    
+    const adminSecret = process.env.ADMIN_SECRET;
+    const clientSecret = req.headers['x-admin-secret'];
+    
+    if (!adminSecret) {
+      return res.status(500).json({ error: 'Server configuration error: ADMIN_SECRET is not set in environment.' });
+    }
+    if (clientSecret !== adminSecret) {
+      console.warn(`[${new Date().toISOString()}] Unauthorized attempt to post to Instagram. Invalid key.`);
+      return res.status(401).json({ error: 'Unauthorized: Invalid admin secret key.' });
+    }
+
+    const mediaId = await publishCarouselToInstagram(images, caption);
     
     return res.json({
       success: true,

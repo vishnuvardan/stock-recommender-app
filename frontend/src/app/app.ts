@@ -67,11 +67,6 @@ export class App implements OnInit {
   protected readonly instagramAdminSecret = signal<string>('');
 
 
-  // Subscription signals
-  protected readonly subscriberEmail = signal<string>('');
-  protected readonly isSubscribing = signal<boolean>(false);
-  protected readonly subscriptionSuccess = signal<boolean>(false);
-  protected readonly subscriptionError = signal<string | null>(null);
 
   // Default disclaimer text displayed prior to load
   protected readonly defaultDisclaimer = 
@@ -714,34 +709,6 @@ export class App implements OnInit {
     }).catch((err: any) => {
       console.error('Error generating card image:', err);
       alert('Failed to generate image.');
-    });
-  }
-
-  subscribeEmail(event: Event): void {
-    event.preventDefault();
-    const email = this.subscriberEmail().trim().toLowerCase();
-    
-    if (!email || !email.includes('@')) {
-      this.subscriptionError.set('Please enter a valid email address.');
-      this.subscriptionSuccess.set(false);
-      return;
-    }
-
-    this.isSubscribing.set(true);
-    this.subscriptionError.set(null);
-    this.subscriptionSuccess.set(false);
-
-    this.recommenderService.subscribeEmail(email).subscribe({
-      next: (res) => {
-        this.isSubscribing.set(false);
-        this.subscriptionSuccess.set(true);
-        this.subscriberEmail.set(''); // Clear input
-      },
-      error: (err) => {
-        this.isSubscribing.set(false);
-        const errMsg = err.error?.error || 'Failed to subscribe. Please try again later.';
-        this.subscriptionError.set(errMsg);
-      }
     });
   }
 }
