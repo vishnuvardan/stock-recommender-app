@@ -408,6 +408,9 @@
                 <button class="btn btn-primary" (click)="downloadAllSlides()">
                   📥 Download All 5 Slides
                 </button>
+                <button class="btn btn-instagram" (click)="openInstagramShareModal('research')">
+                  📸 Share to Instagram
+                </button>
               </div>
             </div>
 
@@ -890,26 +893,69 @@
     <div class="instagram-modal-backdrop" (click)="closeInstagramShareModal()">
       <div class="instagram-modal-content" (click)="$event.stopPropagation()">
         <div class="instagram-modal-header">
-          <h3>📸 Share Premarket Carousel to Instagram</h3>
+          <h3>📸 Share {{ instagramShareType() === 'premarket' ? 'Premarket' : 'Stock Research' }} Carousel to Instagram</h3>
           <button class="close-modal-btn" (click)="closeInstagramShareModal()" [disabled]="isInstagramSharing()">&times;</button>
         </div>
         
         <div class="instagram-modal-body">
           <div class="instagram-modal-preview">
-            <p class="preview-label">Carousel Slides Preview ({{ premarketData()?.slides?.length }} slides):</p>
-            <div class="slides-mini-grid">
-              @for (slide of premarketData()?.slides; track slide.slideNumber) {
+            @if (instagramShareType() === 'premarket') {
+              <p class="preview-label">Carousel Slides Preview ({{ premarketData()?.slides?.length }} slides):</p>
+              <div class="slides-mini-grid">
+                @for (slide of premarketData()?.slides; track slide.slideNumber) {
+                  <div class="slide-mini-thumb">
+                    <div class="thumb-inner">
+                      <span class="thumb-badge" [class.badge-overview]="slide.type === 'market_overview'" [class.badge-impact]="slide.type === 'stock_impact'">
+                        {{ slide.badge }}
+                      </span>
+                      <span class="thumb-number">Slide {{ slide.slideNumber }}</span>
+                      <p class="thumb-title">{{ slide.title }}</p>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <p class="preview-label">Carousel Slides Preview (5 slides):</p>
+              <div class="slides-mini-grid">
                 <div class="slide-mini-thumb">
                   <div class="thumb-inner">
-                    <span class="thumb-badge" [class.badge-overview]="slide.type === 'market_overview'" [class.badge-impact]="slide.type === 'stock_impact'">
-                      {{ slide.badge }}
-                    </span>
-                    <span class="thumb-number">Slide {{ slide.slideNumber }}</span>
-                    <p class="thumb-title">{{ slide.title }}</p>
+                    <span class="thumb-badge badge-impact">NEWS</span>
+                    <span class="thumb-number">Slide 1</span>
+                    <p class="thumb-title">Latest News & Catalysts</p>
                   </div>
                 </div>
-              }
-            </div>
+                <div class="slide-mini-thumb">
+                  <div class="thumb-inner">
+                    <span class="thumb-badge badge-overview">OVERVIEW</span>
+                    <span class="thumb-number">Slide 2</span>
+                    <p class="thumb-title">Company Profile</p>
+                  </div>
+                </div>
+                <div class="slide-mini-thumb">
+                  <div class="thumb-inner">
+                    <span class="thumb-badge badge-overview">FINANCIALS</span>
+                    <span class="thumb-number">Slide 3</span>
+                    <p class="thumb-title">Financial & Trend Data</p>
+                  </div>
+                </div>
+                <div class="slide-mini-thumb">
+                  <div class="thumb-inner">
+                    <span class="thumb-badge badge-impact">THESIS</span>
+                    <span class="thumb-number">Slide 4</span>
+                    <p class="thumb-title">Investment Thesis</p>
+                  </div>
+                </div>
+                <div class="slide-mini-thumb">
+                  <div class="thumb-inner">
+                    <span class="thumb-badge badge-impact" [class.badge-overview]="researchData()?.signal === 'HOLD'" [class.badge-impact]="researchData()?.signal !== 'HOLD'">
+                      {{ researchData()?.signal || 'SIGNAL' }}
+                    </span>
+                    <span class="thumb-number">Slide 5</span>
+                    <p class="thumb-title">Investor Guide</p>
+                  </div>
+                </div>
+              </div>
+            }
           </div>
           
           <div class="instagram-caption-section">
@@ -973,7 +1019,7 @@
               <div class="success-box">
                 <span class="success-icon-large">✅</span>
                 <h4>Post Successfully Published!</h4>
-                <p>Your Premarket Report carousel has been successfully uploaded and posted to Instagram.</p>
+                <p>Your {{ instagramShareType() === 'premarket' ? 'Premarket Report' : 'Stock Research' }} carousel has been successfully uploaded and posted to Instagram.</p>
                 <button class="btn btn-primary btn-success-dismiss" (click)="closeInstagramShareModal()">Great!</button>
               </div>
             </div>

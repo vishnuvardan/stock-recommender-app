@@ -65,6 +65,7 @@ export class App implements OnInit {
   protected readonly instagramError = signal<string | null>(null);
   protected readonly instagramCaption = signal<string>('');
   protected readonly instagramAdminSecret = signal<string>('');
+  protected readonly instagramShareType = signal<'premarket' | 'research'>('premarket');
 
 
 
@@ -573,28 +574,46 @@ export class App implements OnInit {
     }
   }
 
-  openInstagramShareModal(): void {
-    const data = this.premarketData();
-    if (!data || !data.slides || data.slides.length === 0) {
-      alert('No premarket data available to share.');
-      return;
+  openInstagramShareModal(type: 'premarket' | 'research' = 'premarket'): void {
+    this.instagramShareType.set(type);
+
+    if (type === 'premarket') {
+      const data = this.premarketData();
+      if (!data || !data.slides || data.slides.length === 0) {
+        alert('No premarket data available to share.');
+        return;
+      }
+
+      const dateStr = data.lastUpdated ? new Date(data.lastUpdated).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }) : new Date().toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      this.instagramCaption.set(
+        `🇮🇳 Premarket Report - ${dateStr}\n\n` +
+        `Here is the market outlook and key stock updates for today. Swipe left to see details for Nifty levels and stock setups.\n\n` +
+        `#PremarketReport #IndianStockMarket #Nifty50 #Sensex #NSE #BSE #StockMarketIndia #Trading #Investing #MarketAnalysis #StockAnalysis`
+      );
+    } else {
+      const rData = this.researchData();
+      if (!rData) {
+        alert('No stock research data available to share.');
+        return;
+      }
+
+      this.instagramCaption.set(
+        `📊 AI Stock Analysis: $${rData.symbol} (${rData.companyName})\n\n` +
+        `Signal: ${rData.signal}\n` +
+        `Reasoning: ${rData.signalReason}\n\n` +
+        `Here is the fundamental research and swing guidelines. Swipe left to see metrics, financials, and trade targets.\n\n` +
+        `#StockAnalysis #${rData.symbol} #${rData.companyName.replace(/\s+/g, '')} #FundamentalAnalysis #Trading #Investing #StockMarketIndia #ShareMarket #SwingTrading`
+      );
     }
-
-    const dateStr = data.lastUpdated ? new Date(data.lastUpdated).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    }) : new Date().toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-
-    this.instagramCaption.set(
-      `🇮🇳 Premarket Report - ${dateStr}\n\n` +
-      `Here is the market outlook and key stock updates for today. Swipe left to see details for Nifty levels and stock setups.\n\n` +
-      `#PremarketReport #IndianStockMarket #Nifty50 #Sensex #NSE #BSE #StockMarketIndia #Trading #Investing #MarketAnalysis #StockAnalysis`
-    );
 
     this.instagramShareStatus.set('idle');
     this.instagramError.set(null);
@@ -618,8 +637,19 @@ export class App implements OnInit {
       return;
     }
 
-    const slides = this.premarketData()?.slides || [];
-    if (slides.length === 0) {
+    const type = this.instagramShareType();
+    let numSlides = 0;
+    let elementIdPrefix = '';
+
+    if (type === 'premarket') {
+      numSlides = this.premarketData()?.slides?.length || 0;
+      elementIdPrefix = 'premarket-slide-';
+    } else {
+      numSlides = 5; // Stock research always has exactly 5 slides
+      elementIdPrefix = 'instagram-slide-';
+    }
+
+    if (numSlides === 0) {
       alert('No slides to share.');
       return;
     }
@@ -632,8 +662,8 @@ export class App implements OnInit {
 
     try {
       // 1. Capture slides as base64 images
-      for (let i = 0; i < slides.length; i++) {
-        const slideElement = document.getElementById(`premarket-slide-${i}`);
+      for (let i = 0; i < numSlides; i++) {
+        const slideElement = document.getElementById(`${elementIdPrefix}${i}`);
         if (!slideElement) {
           throw new Error(`Slide element for slide #${i + 1} not found.`);
         }
@@ -656,7 +686,6 @@ export class App implements OnInit {
       // 2. Send images and caption to backend
       this.recommenderService.shareToInstagram(base64Images, this.instagramCaption(), this.instagramAdminSecret()).subscribe({
         next: (res) => {
-
           this.instagramShareStatus.set('success');
           this.isInstagramSharing.set(false);
         },
