@@ -1317,19 +1317,27 @@ async function publishCarouselToInstagram(images, caption) {
     const mediaId = publishResponse.data.id;
     console.log(`[${new Date().toISOString()}] Instagram Publisher: Post published successfully! Media ID: ${mediaId}`);
     
-    imageUrls.forEach(url => {
-      del(url, { token: blobToken }).catch(err => {
-        console.error(`[${new Date().toISOString()}] Instagram Publisher: Cleanup failed for ${url}:`, err.message);
-      });
-    });
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Deleting uploaded images from Vercel Blob...`);
+    await Promise.all(
+      imageUrls.map(url =>
+        del(url, { token: blobToken }).catch(err => {
+          console.error(`[${new Date().toISOString()}] Instagram Publisher: Cleanup failed for ${url}:`, err.message);
+        })
+      )
+    );
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Vercel Blob cleanup completed.`);
     
     return mediaId;
   } catch (error) {
-    imageUrls.forEach(url => {
-      del(url, { token: blobToken }).catch(err => {
-        console.error(`[${new Date().toISOString()}] Instagram Publisher: Cleanup failed for ${url}:`, err.message);
-      });
-    });
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Deleting uploaded images after error...`);
+    await Promise.all(
+      imageUrls.map(url =>
+        del(url, { token: blobToken }).catch(err => {
+          console.error(`[${new Date().toISOString()}] Instagram Publisher: Cleanup failed for ${url}:`, err.message);
+        })
+      )
+    );
+    console.log(`[${new Date().toISOString()}] Instagram Publisher: Vercel Blob cleanup completed.`);
     throw error;
   }
 }
