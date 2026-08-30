@@ -7,13 +7,30 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { put, del } from '@vercel/blob';
-import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();
+
+// Configure Fontconfig path for Serverless / Local deployment
+const fontsDir = path.join(process.cwd(), 'fonts');
+if (fs.existsSync(fontsDir)) {
+  process.env.FONTCONFIG_PATH = fontsDir;
+  console.log(`[${new Date().toISOString()}] Fontconfig path initialized to: ${fontsDir}`);
+  
+  // Create writeable cache directory in /tmp for serverless environment
+  const cacheDir = '/tmp/fonts-cache';
+  if (!fs.existsSync(cacheDir)) {
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      console.log(`[${new Date().toISOString()}] Created Fontconfig cache directory at: ${cacheDir}`);
+    } catch (err) {
+      console.warn(`[${new Date().toISOString()}] Failed to create Fontconfig cache directory:`, err.message);
+    }
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -826,7 +843,7 @@ const PREMARKET_SYSTEM_INSTRUCTION = `You are an expert Indian stock market macr
      - title: "NIFTY 50 EXPECTATION"
      - subtitle: "NSE Opening Outlook"
      - headline: "NIFTY 50"
-     - badge: Expected opening direction (e.g. "GAP UP", "GAP DOWN", "FLAT", "BULLISH", "BEARISH", "SIDEWAYS")
+     - badge: Expected opening direction and estimated gap size in points (strictly formatted as "GAP UP (+X to +Y pts)", "GAP DOWN (-X to -Y pts)", or "FLAT (±X pts)". Example: "GAP UP (+70 to +100 pts)" or "GAP DOWN (-50 to -80 pts)").
      - cues: Concise 1-2 sentence summary of global cues (US markets, overnight changes).
      - details: Detailed 2-3 sentence macro explanation of why we expect this opening behavior.
      - levels: Key range support/resistance levels to watch today (e.g. "Support: 24,100, Resistance: 24,350").
@@ -859,7 +876,7 @@ Return STRICTLY a JSON object matching this structural schema:
       "title": "NIFTY 50 EXPECTATION",
       "subtitle": "NSE Opening Outlook",
       "headline": "NIFTY 50",
-      "badge": "GAP UP" | "GAP DOWN" | "FLAT" | "BULLISH" | "BEARISH" | "SIDEWAYS",
+      "badge": "GAP UP (+70 to +100 pts)" | "GAP DOWN (-50 to -80 pts)" | "FLAT (±15 pts)" | "BULLISH" | "BEARISH" | "SIDEWAYS",
       "cues": "Global cues summary text",
       "details": "Opening rationale explanation text",
       "levels": "Support & Resistance levels text"
@@ -1099,6 +1116,8 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
   
   const badgeText = isMarketOverview ? `EXPECTED OPEN: ${badge}` : `SENTIMENT: ${badge}`;
   const headlineWithCmp = isMarketOverview ? headline : `${headline}${slide.cmp ? `  •  CMP: ${slide.cmp}` : ''}`;
+  const badgeWidth = isMarketOverview ? 600 : 450;
+  const badgeCenterX = 70 + badgeWidth / 2;
   
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
     <defs>
@@ -1111,7 +1130,7 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap');
         .main-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 64px; fill: #ffffff; letter-spacing: -0.01em; }
         .sub-title { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 34px; fill: #94a3b8; }
-        .badge-text { font-family: 'Outfit', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: 0.05em; text-transform: uppercase; text-anchor: middle; }
+        .badge-text { font-family: 'Outfit', sans-serif; font-weight: 900; font-size: 24px; letter-spacing: 0.03em; text-transform: uppercase; text-anchor: middle; }
         .card-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: 0.02em; }
         .card-body { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; font-size: 26px; fill: #cbd5e1; }
       </style>
@@ -1120,8 +1139,8 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
     <text x="540" y="675" fill="none" stroke="rgba(255, 255, 255, 0.015)" stroke-width="3" font-size="120" font-family="'Outfit', sans-serif" font-weight="900" text-anchor="middle" transform="rotate(-15, 540, 675)">INDIA NSE</text>
     <text x="70" y="120" class="main-title">${subtitle}</text>
     <text x="70" y="175" class="sub-title">${escapeSvgText(headlineWithCmp)}</text>
-    <rect x="70" y="210" width="450" height="55" rx="8" fill="${badgeBg}" stroke="${badgeStroke}" stroke-width="1.5" />
-    <text x="295" y="247" fill="${badgeColor}" class="badge-text">${escapeSvgText(badgeText)}</text>
+    <rect x="70" y="210" width="${badgeWidth}" height="55" rx="8" fill="${badgeBg}" stroke="${badgeStroke}" stroke-width="1.5" />
+    <text x="${badgeCenterX}" y="247" fill="${badgeColor}" class="badge-text">${escapeSvgText(badgeText)}</text>
   `;
   
   if (isMarketOverview) {
@@ -1198,6 +1217,7 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
 
 // Convert SVG string to PNG Buffer via sharp
 async function convertSvgToPngBuffer(svgString) {
+  const { default: sharp } = await import('sharp');
   return await sharp(Buffer.from(svgString))
     .png()
     .toBuffer();

@@ -5,7 +5,12 @@
       "src": "server.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["instruments.csv"],
+        "includeFiles": [
+          "instruments.csv",
+          "fonts/Outfit.ttf",
+          "fonts/PlusJakartaSans.ttf",
+          "fonts/fonts.conf"
+        ],
         "maxDuration": 60
       }
     }
