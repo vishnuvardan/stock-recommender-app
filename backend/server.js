@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { put, del } from '@vercel/blob';
+import { Resvg } from '@resvg/resvg-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,23 +15,31 @@ const __dirname = path.dirname(__filename);
 // Load environment variables
 dotenv.config();
 
-// Configure Fontconfig path for Serverless / Local deployment
-const fontsDir = path.join(process.cwd(), 'fonts');
-if (fs.existsSync(fontsDir)) {
-  process.env.FONTCONFIG_PATH = fontsDir;
-  console.log(`[${new Date().toISOString()}] Fontconfig path initialized to: ${fontsDir}`);
-  
-  // Create writeable cache directory in /tmp for serverless environment
-  const cacheDir = '/tmp/fonts-cache';
-  if (!fs.existsSync(cacheDir)) {
-    try {
-      fs.mkdirSync(cacheDir, { recursive: true });
-      console.log(`[${new Date().toISOString()}] Created Fontconfig cache directory at: ${cacheDir}`);
-    } catch (err) {
-      console.warn(`[${new Date().toISOString()}] Failed to create Fontconfig cache directory:`, err.message);
+// Load custom font buffers into memory for Resvg SVG rendering (Zero OS font dependency)
+const loadFontBuffer = (fontFilename) => {
+  const candidates = [
+    path.join(process.cwd(), 'fonts', fontFilename),
+    path.join(__dirname, 'fonts', fontFilename),
+    path.join(process.cwd(), 'backend', 'fonts', fontFilename),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        const buffer = fs.readFileSync(candidate);
+        console.log(`[${new Date().toISOString()}] Loaded font "${fontFilename}" (${buffer.length} bytes) from: ${candidate}`);
+        return buffer;
+      } catch (err) {
+        console.warn(`[${new Date().toISOString()}] Failed to read font at ${candidate}:`, err.message);
+      }
     }
   }
-}
+  console.warn(`[${new Date().toISOString()}] Warning: Font file "${fontFilename}" not found in candidate paths.`);
+  return null;
+};
+
+const outfitFontBuffer = loadFontBuffer('Outfit.ttf');
+const plusJakartaFontBuffer = loadFontBuffer('PlusJakartaSans.ttf');
+const customFontBuffers = [outfitFontBuffer, plusJakartaFontBuffer].filter(Boolean);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1088,12 +1097,12 @@ async function injectCmpToPremarketReport(premarketReport) {
 }
 
 // 1080x1350 Instagram Portrait Slide SVG Template Generator
-function renderSlideToSvg(slide, marketOverview, totalSlides) {
+function renderSlideToSvg(slide, marketOverview, totalSlides = 4) {
   const isMarketOverview = slide.type === 'market_overview';
   
-  const title = escapeSvgText(slide.title);
-  const subtitle = escapeSvgText(slide.subtitle);
-  const headline = escapeSvgText(slide.headline);
+  const title = slide.title || '';
+  const subtitle = slide.subtitle || '';
+  const headline = slide.headline || '';
   const badge = slide.badge || '';
   const cues = slide.cues || '';
   const details = slide.details || '';
@@ -1104,11 +1113,11 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
   let badgeStroke = 'rgba(203, 213, 225, 0.25)';
   let badgeColor = '#cbd5e1';
   
-  if (badgeUpper.includes('UP') || badgeUpper.includes('BULLISH')) {
+  if (badgeUpper.includes('UP') || badgeUpper.includes('BULLISH') || badgeUpper.includes('BUY') || badgeUpper.includes('POSITIVE')) {
     badgeBg = 'rgba(34, 197, 94, 0.15)';
     badgeStroke = 'rgba(74, 222, 128, 0.25)';
     badgeColor = '#4ade80';
-  } else if (badgeUpper.includes('DOWN') || badgeUpper.includes('BEARISH')) {
+  } else if (badgeUpper.includes('DOWN') || badgeUpper.includes('BEARISH') || badgeUpper.includes('SELL') || badgeUpper.includes('NEGATIVE')) {
     badgeBg = 'rgba(239, 68, 68, 0.15)';
     badgeStroke = 'rgba(248, 113, 113, 0.25)';
     badgeColor = '#f87171';
@@ -1116,7 +1125,7 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
   
   const badgeText = isMarketOverview ? `EXPECTED OPEN: ${badge}` : `SENTIMENT: ${badge}`;
   const headlineWithCmp = isMarketOverview ? headline : `${headline}${slide.cmp ? `  •  CMP: ${slide.cmp}` : ''}`;
-  const badgeWidth = isMarketOverview ? 600 : 450;
+  const badgeWidth = isMarketOverview ? 540 : 420;
   const badgeCenterX = 70 + badgeWidth / 2;
   
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
@@ -1127,100 +1136,123 @@ function renderSlideToSvg(slide, marketOverview, totalSlides) {
         <stop offset="100%" stop-color="#04080a" />
       </linearGradient>
       <style type="text/css">
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap');
-        .main-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 64px; fill: #ffffff; letter-spacing: -0.01em; }
-        .sub-title { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 34px; fill: #94a3b8; }
-        .badge-text { font-family: 'Outfit', sans-serif; font-weight: 900; font-size: 24px; letter-spacing: 0.03em; text-transform: uppercase; text-anchor: middle; }
-        .card-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: 0.02em; }
-        .card-body { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; font-size: 26px; fill: #cbd5e1; }
+        .main-title { font-family: Outfit, sans-serif; font-weight: 800; font-size: 48px; fill: #ffffff; letter-spacing: -0.01em; }
+        .sub-title { font-family: Plus Jakarta Sans, sans-serif; font-weight: 600; font-size: 28px; fill: #94a3b8; }
+        .badge-text { font-family: Outfit, sans-serif; font-weight: 800; font-size: 22px; letter-spacing: 0.03em; text-transform: uppercase; text-anchor: middle; }
+        .card-title { font-family: Outfit, sans-serif; font-weight: 800; font-size: 24px; letter-spacing: 0.03em; }
+        .card-body { font-family: Plus Jakarta Sans, sans-serif; font-weight: 500; font-size: 24px; fill: #cbd5e1; }
       </style>
     </defs>
     <rect width="1080" height="1350" fill="url(#bg-gradient)" />
-    <text x="540" y="675" fill="none" stroke="rgba(255, 255, 255, 0.015)" stroke-width="3" font-size="120" font-family="'Outfit', sans-serif" font-weight="900" text-anchor="middle" transform="rotate(-15, 540, 675)">INDIA NSE</text>
-    <text x="70" y="120" class="main-title">${subtitle}</text>
-    <text x="70" y="175" class="sub-title">${escapeSvgText(headlineWithCmp)}</text>
-    <rect x="70" y="210" width="${badgeWidth}" height="55" rx="8" fill="${badgeBg}" stroke="${badgeStroke}" stroke-width="1.5" />
-    <text x="${badgeCenterX}" y="247" fill="${badgeColor}" class="badge-text">${escapeSvgText(badgeText)}</text>
+    <text x="540" y="675" fill="none" stroke="rgba(255, 255, 255, 0.015)" stroke-width="3" font-size="120" font-family="Outfit, sans-serif" font-weight="900" text-anchor="middle" transform="rotate(-15, 540, 675)">INDIA NSE</text>
+    <text x="70" y="115" class="main-title">${escapeSvgText(subtitle)}</text>
+    <text x="70" y="165" class="sub-title">${escapeSvgText(headlineWithCmp)}</text>
+    <rect x="70" y="195" width="${badgeWidth}" height="50" rx="8" fill="${badgeBg}" stroke="${badgeStroke}" stroke-width="1.5" />
+    <text x="${badgeCenterX}" y="228" fill="${badgeColor}" class="badge-text">${escapeSvgText(badgeText)}</text>
   `;
   
   if (isMarketOverview) {
-    const niftyCurrent = escapeSvgText(marketOverview.niftyCurrent || 'N/A');
-    const niftyChange = escapeSvgText(marketOverview.niftyChange || 'N/A');
-    const niftyChangePercent = escapeSvgText(marketOverview.niftyChangePercent || 'N/A');
+    const niftyCurrent = escapeSvgText(marketOverview?.niftyCurrent || 'N/A');
+    const niftyChange = escapeSvgText(marketOverview?.niftyChange || 'N/A');
+    const niftyChangePercent = escapeSvgText(marketOverview?.niftyChangePercent || 'N/A');
     const niftyUp = !niftyChange.startsWith('-');
     const niftyColor = niftyUp ? '#4ade80' : '#f87171';
     
-    const sensexCurrent = escapeSvgText(marketOverview.sensexCurrent || 'N/A');
-    const sensexChange = escapeSvgText(marketOverview.sensexChange || 'N/A');
-    const sensexChangePercent = escapeSvgText(marketOverview.sensexChangePercent || 'N/A');
+    const sensexCurrent = escapeSvgText(marketOverview?.sensexCurrent || 'N/A');
+    const sensexChange = escapeSvgText(marketOverview?.sensexChange || 'N/A');
+    const sensexChangePercent = escapeSvgText(marketOverview?.sensexChangePercent || 'N/A');
     const sensexUp = !sensexChange.startsWith('-');
     const sensexColor = sensexUp ? '#4ade80' : '#f87171';
     
     svg += `
-    <rect x="70" y="290" width="455" height="150" rx="12" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1.5" />
-    <rect x="70" y="290" width="6" height="150" fill="${niftyColor}" rx="3" />
-    <text x="100" y="330" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="20px" fill="#94a3b8">NIFTY 50</text>
-    <text x="100" y="380" font-family="'Outfit', sans-serif" font-weight="800" font-size="32px" fill="#ffffff">₹${niftyCurrent}</text>
-    <text x="100" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="22px" fill="${niftyColor}">${niftyChange} (${niftyChangePercent})</text>
+    <rect x="70" y="275" width="455" height="145" rx="12" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1.5" />
+    <rect x="70" y="275" width="6" height="145" fill="${niftyColor}" rx="3" />
+    <text x="100" y="315" font-family="Plus Jakarta Sans, sans-serif" font-weight="700" font-size="20px" fill="#94a3b8">NIFTY 50</text>
+    <text x="100" y="362" font-family="Outfit, sans-serif" font-weight="800" font-size="32px" fill="#ffffff">₹${niftyCurrent}</text>
+    <text x="100" y="398" font-family="Plus Jakarta Sans, sans-serif" font-weight="700" font-size="22px" fill="${niftyColor}">${niftyChange} (${niftyChangePercent})</text>
     
-    <rect x="555" y="290" width="455" height="150" rx="12" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1.5" />
-    <rect x="555" y="290" width="6" height="150" fill="${sensexColor}" rx="3" />
-    <text x="585" y="330" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="20px" fill="#94a3b8">SENSEX</text>
-    <text x="585" y="380" font-family="'Outfit', sans-serif" font-weight="800" font-size="32px" fill="#ffffff">₹${sensexCurrent}</text>
-    <text x="585" y="415" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="22px" fill="${sensexColor}">${sensexChange} (${sensexChangePercent})</text>
+    <rect x="555" y="275" width="455" height="145" rx="12" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.06)" stroke-width="1.5" />
+    <rect x="555" y="275" width="6" height="145" fill="${sensexColor}" rx="3" />
+    <text x="585" y="315" font-family="Plus Jakarta Sans, sans-serif" font-weight="700" font-size="20px" fill="#94a3b8">SENSEX</text>
+    <text x="585" y="362" font-family="Outfit, sans-serif" font-weight="800" font-size="32px" fill="#ffffff">₹${sensexCurrent}</text>
+    <text x="585" y="398" font-family="Plus Jakarta Sans, sans-serif" font-weight="700" font-size="22px" fill="${sensexColor}">${sensexChange} (${sensexChangePercent})</text>
     
-    <rect x="70" y="460" width="940" height="230" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
-    <text x="100" y="510" fill="#fbbf24" class="card-title">🌍 Global Market Cues</text>
-    <text x="100" y="555" class="card-body">
-      ${renderWrappedText(cues, 100, 555, 36, 60)}
+    <rect x="70" y="445" width="940" height="235" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <circle cx="108" cy="486" r="5" fill="#fbbf24" />
+    <text x="125" y="493" fill="#fbbf24" class="card-title">GLOBAL MARKET CUES</text>
+    <text x="100" y="538" class="card-body">
+      ${renderWrappedText(cues, 100, 538, 34, 62)}
     </text>
     
-    <rect x="70" y="710" width="940" height="250" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
-    <text x="100" y="760" fill="#fbbf24" class="card-title">💡 Why This Opening Strategy?</text>
-    <text x="100" y="805" class="card-body">
-      ${renderWrappedText(details, 100, 805, 36, 60)}
+    <rect x="70" y="705" width="940" height="255" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <circle cx="108" cy="746" r="5" fill="#fbbf24" />
+    <text x="125" y="753" fill="#fbbf24" class="card-title">WHY THIS OPENING STRATEGY?</text>
+    <text x="100" y="798" class="card-body">
+      ${renderWrappedText(details, 100, 798, 34, 62)}
     </text>
     
-    <rect x="70" y="980" width="940" height="220" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
-    <text x="100" y="1030" fill="#fbbf24" class="card-title">🎯 Target Range &amp; Possibilities</text>
-    <text x="100" y="1075" class="card-body">
-      ${renderWrappedText(levels, 100, 1075, 36, 60)}
+    <rect x="70" y="985" width="940" height="225" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <circle cx="108" cy="1026" r="5" fill="#fbbf24" />
+    <text x="125" y="1033" fill="#fbbf24" class="card-title">TARGET RANGE &amp; POSSIBILITIES</text>
+    <text x="100" y="1078" class="card-body">
+      ${renderWrappedText(levels, 100, 1078, 34, 62)}
     </text>
     `;
   } else {
     const sentimentColor = badgeColor;
     
     svg += `
-    <rect x="70" y="290" width="940" height="270" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
-    <text x="100" y="340" fill="${sentimentColor}" class="card-title">📰 Catalyst Trigger News</text>
-    <text x="100" y="385" class="card-body">
-      ${renderWrappedText(cues, 100, 385, 36, 60)}
+    <rect x="70" y="275" width="940" height="275" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <circle cx="108" cy="316" r="5" fill="${sentimentColor}" />
+    <text x="125" y="323" fill="${sentimentColor}" class="card-title">CATALYST TRIGGER NEWS</text>
+    <text x="100" y="368" class="card-body">
+      ${renderWrappedText(cues, 100, 368, 34, 62)}
     </text>
     
-    <rect x="70" y="580" width="940" height="300" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
-    <text x="100" y="630" fill="${sentimentColor}" class="card-title">🔍 Market Impact Analysis</text>
-    <text x="100" y="675" class="card-body">
-      ${renderWrappedText(details, 100, 675, 36, 60)}
+    <rect x="70" y="575" width="940" height="305" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <circle cx="108" cy="616" r="5" fill="${sentimentColor}" />
+    <text x="125" y="623" fill="${sentimentColor}" class="card-title">MARKET IMPACT ANALYSIS</text>
+    <text x="100" y="668" class="card-body">
+      ${renderWrappedText(details, 100, 668, 34, 62)}
     </text>
     
-    <rect x="70" y="900" width="940" height="240" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
-    <text x="100" y="950" fill="#60a5fa" class="card-title">⚡ Key Levels to Watch</text>
-    <text x="100" y="995" class="card-body">
-      ${renderWrappedText(levels, 100, 995, 36, 60)}
+    <rect x="70" y="905" width="940" height="245" rx="12" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" />
+    <circle cx="108" cy="946" r="5" fill="#60a5fa" />
+    <text x="125" y="953" fill="#60a5fa" class="card-title">KEY LEVELS TO WATCH</text>
+    <text x="100" y="998" class="card-body">
+      ${renderWrappedText(levels, 100, 998, 34, 62)}
     </text>
     `;
   }
+  
+  // Footer
+  svg += `
+    <text x="70" y="1275" font-family="Plus Jakarta Sans, sans-serif" font-weight="600" font-size="18px" fill="#475569">Not SEBI registered • Educational &amp; Swing Analysis</text>
+    <text x="1010" y="1275" font-family="Outfit, sans-serif" font-weight="700" font-size="18px" fill="#475569" text-anchor="end">INDIA NSE DAILY</text>
+  `;
   
   svg += `</svg>`;
   return svg;
 }
 
-// Convert SVG string to PNG Buffer via sharp
+// Convert SVG string to PNG Buffer via @resvg/resvg-js with in-memory fonts
 async function convertSvgToPngBuffer(svgString) {
-  const { default: sharp } = await import('sharp');
-  return await sharp(Buffer.from(svgString))
-    .png()
-    .toBuffer();
+  const resvg = new Resvg(svgString, {
+    font: {
+      fontBuffers: customFontBuffers,
+      defaultFontFamily: 'Plus Jakarta Sans',
+      loadSystemFonts: false,
+    },
+    fitTo: {
+      mode: 'width',
+      value: 1080,
+    },
+    shapeRendering: 2,
+    textRendering: 1,
+    imageRendering: 0,
+  });
+  const pngData = resvg.render();
+  return pngData.asPng();
 }
 
 // Common Instagram Publishing Helper
