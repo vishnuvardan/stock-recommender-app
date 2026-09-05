@@ -6,9 +6,7 @@
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
-          "instruments.csv",
-          "fonts/Outfit.ttf",
-          "fonts/PlusJakartaSans.ttf"
+          "instruments.csv"
         ],
         "maxDuration": 60
       }
@@ -18,12 +16,6 @@
     {
       "src": "/(.*)",
       "dest": "server.js"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/premarket-instagram",
-      "schedule": "30 1 * * *"
     }
   ]
 }
